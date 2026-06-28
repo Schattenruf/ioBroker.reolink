@@ -313,8 +313,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                         val: this.apiConnected,
                         ack: true,
                     });
-                    const MdValues = MdInfoValues.data[0];
-                    const motionDetected = !!MdValues.value.state;
+                    const motionDetected = (0, hub_helper_1.extractMotionState)(MdInfoValues.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
                     await this.setState('sensor.motion', {
                         val: motionDetected,

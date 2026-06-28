@@ -1,5 +1,10 @@
 const { expect } = require('chai');
-const { buildHubStreamUrl, getHubStreamUrls, getMotionPollingIntervalMs } = require('../../build/hub-helper');
+const {
+    buildHubStreamUrl,
+    extractMotionState,
+    getHubStreamUrls,
+    getMotionPollingIntervalMs,
+} = require('../../build/hub-helper');
 
 describe('Hub helper', () => {
     it('should build a hub RTSP URL for the main stream', () => {
@@ -21,5 +26,18 @@ describe('Hub helper', () => {
     it('should use a fast polling interval for hub motion updates', () => {
         expect(getMotionPollingIntervalMs(true, 30)).to.equal(5000);
         expect(getMotionPollingIntervalMs(false, 30)).to.equal(0);
+    });
+
+    it('should extract motion from a hub-style payload', () => {
+        const payload = {
+            data: [
+                { value: { channel: 0, state: 0 } },
+                { value: { channel: 1, state: 'triggered' } },
+            ],
+        };
+
+        expect(extractMotionState(payload, 1)).to.equal(true);
+        expect(extractMotionState({ value: { channel: 0, state: 1 } }, 0)).to.equal(true);
+        expect(extractMotionState({ value: { channel: 0, state: 0 } }, 0)).to.equal(false);
     });
 });

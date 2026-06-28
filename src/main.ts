@@ -7,7 +7,7 @@ import { NeolinkManager, type NeolinkConfig } from './neolink-manager';
 import { checkAllDependencies } from './dependency-check';
 import { captureSnapshot } from './snapshot-helper';
 import { MqttHelper } from './mqtt-helper';
-import { getHubStreamUrls, getMotionPollingIntervalMs } from './hub-helper';
+import { extractMotionState, getHubStreamUrls, getMotionPollingIntervalMs } from './hub-helper';
 import type {
     ReoLinkCamAdapterConfig,
     ReolinkCommand,
@@ -323,9 +323,7 @@ class ReoLinkCamAdapter extends Adapter {
                         ack: true,
                     });
 
-                    const MdValues = MdInfoValues.data[0];
-
-                    const motionDetected = !!MdValues.value.state;
+                    const motionDetected = extractMotionState(MdInfoValues.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
                     await this.setState('sensor.motion', {
                         val: motionDetected,
