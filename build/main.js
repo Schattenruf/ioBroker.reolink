@@ -182,6 +182,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
     async onReady() {
         await this.setState('info.connection', false, true);
         this.log.info('Reolink adapter has started');
+        await this.ensureHubModeState();
         if (!this.config.cameraIp) {
             this.log.error('Camera Ip not set - please check instance!');
             return;
@@ -290,13 +291,18 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                         ack: true,
                     });
                     const MdValues = MdInfoValues.data[0];
-                    this.log.debug(`Motion Detection value: ${MdValues.value.state}`);
+                    const motionDetected = !!MdValues.value.state;
+                    this.log.debug(`Motion Detection value: ${motionDetected}`);
                     await this.setState('sensor.motion', {
-                        val: !!MdValues.value.state,
+                        val: motionDetected,
+                        ack: true,
+                    });
+                    await this.setState('sensor.motion_triggered', {
+                        val: motionDetected,
                         ack: true,
                     });
                     await this.setState('status.motion', {
-                        val: !!MdValues.value.state,
+                        val: motionDetected,
                         ack: true,
                     });
                 }
@@ -624,8 +630,16 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                         val: LinkValues.value.LocalLink.activeLink,
                         ack: true,
                     });
+                    const streamUrls = (0, hub_helper_1.getHubStreamUrls)(this.config.cameraIp, this.config.cameraChannel, LinkValues.value.LocalLink.activeLink);
+                    await this.setState('streams.hubMainStream', {
+                        val: streamUrls.mainStream,
+                        ack: true,
+                    });
+                    await this.setState('streams.hubSubStream', {
+                        val: streamUrls.subStream,
+                        ack: true,
+                    });
                     if (this.config.useHub) {
-                        const streamUrls = (0, hub_helper_1.getHubStreamUrls)(this.config.cameraIp, this.config.cameraChannel, LinkValues.value.LocalLink.activeLink);
                         await this.setState('streams.mainStream', {
                             val: streamUrls.mainStream,
                             ack: true,
@@ -2053,6 +2067,24 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         this.log.debug('Battery camera states cleanup complete');
     }
     /**
+     * Create a visible state that reflects whether Hub mode is enabled.
+     */
+    async ensureHubModeState() {
+        await this.setObjectNotExistsAsync('info.hub_mode', {
+            type: 'state',
+            common: {
+                name: { en: 'Hub mode enabled', de: 'Hub-Modus aktiv' },
+                type: 'boolean',
+                role: 'indicator',
+                read: true,
+                write: false,
+                def: false,
+            },
+            native: {},
+        });
+        await this.setStateAsync('info.hub_mode', !!this.config.useHub, true);
+    }
+    /**
      * Create state objects for HTTP API cameras (standard Reolink cameras).
      * Called on adapter start when isBatteryCam = false, analogous to
      * createBatteryCamStates() for battery cameras. This ensures all states
@@ -2088,6 +2120,31 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             },
             native: {},
         });
+        await this.setObjectNotExistsAsync('streams.hubMainStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'hub main stream', de: 'hub hauptstream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.hubSubStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'hub sub stream', de: 'hub unterer stream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        const initialHubUrls = (0, hub_helper_1.getHubStreamUrls)(this.config.cameraIp, this.config.cameraChannel);
+        await this.setStateAsync('streams.hubMainStream', initialHubUrls.mainStream, true);
+        await this.setStateAsync('streams.hubSubStream', initialHubUrls.subStream, true);
         // --- Motion status ---
         await this.setObjectNotExistsAsync('status', {
             type: 'channel',
@@ -2123,6 +2180,17 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             common: {
                 role: 'sensor.motion',
                 name: { en: 'motion detection', de: 'Bewegungserkennung' },
+                type: 'boolean',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('sensor.motion_triggered', {
+            type: 'state',
+            common: {
+                role: 'sensor.motion',
+                name: { en: 'motion triggered', de: 'Bewegung ausgelöst' },
                 type: 'boolean',
                 read: true,
                 write: false,
@@ -3125,13 +3193,19 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         if (payload === 'triggered' || payload === 'on') {
             this.log.info('Motion detected!');
             await this.setStateAsync('status.motion', true, true);
+            await this.setStateAsync('sensor.motion', true, true);
+            await this.setStateAsync('sensor.motion_triggered', true, true);
             // Clear motion after 5 seconds
             this.setTimeout(async () => {
                 await this.setStateAsync('status.motion', false, true);
+                await this.setStateAsync('sensor.motion', false, true);
+                await this.setStateAsync('sensor.motion_triggered', false, true);
             }, 5000);
         }
         else if (payload === 'clear' || payload === 'off') {
             await this.setStateAsync('status.motion', false, true);
+            await this.setStateAsync('sensor.motion', false, true);
+            await this.setStateAsync('sensor.motion_triggered', false, true);
         }
     }
     /**
