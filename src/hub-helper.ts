@@ -9,9 +9,52 @@ function normalizeMotionValue(value: unknown): boolean {
     }
     if (typeof value === 'string') {
         const normalized = value.trim().toLowerCase();
-        return ['1', 'true', 'on', 'active', 'triggered', 'alarm', 'motion'].includes(normalized);
+        return ['1', 'true', 'on', 'active', 'triggered', 'alarm', 'motion', 'detected'].includes(normalized);
     }
     return Boolean(value);
+}
+
+function findMotionValue(node: unknown): boolean | undefined {
+    if (node === null || node === undefined) {
+        return undefined;
+    }
+
+    if (typeof node === 'boolean' || typeof node === 'number' || typeof node === 'string') {
+        return normalizeMotionValue(node);
+    }
+
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const result = findMotionValue(item);
+            if (result !== undefined) {
+                return result;
+            }
+        }
+        return undefined;
+    }
+
+    if (typeof node === 'object') {
+        const record = node as Record<string, unknown>;
+        const directKeys = ['state', 'motion', 'motionState', 'alarm_state', 'alarmState', 'triggered', 'status'];
+        for (const key of directKeys) {
+            const value = record[key];
+            if (value !== undefined) {
+                const result = findMotionValue(value);
+                if (result !== undefined) {
+                    return result;
+                }
+            }
+        }
+
+        for (const value of Object.values(record)) {
+            const result = findMotionValue(value);
+            if (result !== undefined) {
+                return result;
+            }
+        }
+    }
+
+    return undefined;
 }
 
 export function extractMotionState(payload: unknown, cameraChannel?: number): boolean {
@@ -27,20 +70,16 @@ export function extractMotionState(payload: unknown, cameraChannel?: number): bo
         .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
         .map(entry => {
             const value = entry.value;
-            if (value && typeof value === 'object') {
-                const channelValue = (value as Record<string, unknown>).channel ?? (value as Record<string, unknown>).Channel;
-                const possibleState = (value as Record<string, unknown>).state ?? (value as Record<string, unknown>).motion;
-                return {
-                    channel: Number(channelValue ?? channel),
-                    state: normalizeMotionValue(possibleState),
-                };
-            }
-
-            const entryChannel = (entry.channel ?? entry.Channel) as unknown;
-            const possibleState = (entry.state ?? entry.motion ?? entry.alarm_state) as unknown;
+            const nestedChannel = value && typeof value === 'object'
+                ? (value as Record<string, unknown>).channel ?? (value as Record<string, unknown>).Channel
+                : undefined;
+            const entryChannel = (entry.channel ?? entry.Channel ?? nestedChannel) as unknown;
+            const modeValue = (value && typeof value === 'object'
+                ? findMotionValue(value)
+                : undefined) ?? findMotionValue(entry);
             return {
                 channel: Number(entryChannel ?? channel),
-                state: normalizeMotionValue(possibleState),
+                state: modeValue ?? false,
             };
         });
 
@@ -60,12 +99,30 @@ export function getMotionPollingIntervalMs(useHub: boolean, _apiRefreshIntervalS
     return 5000;
 }
 
+function normalizeHubHost(cameraIp?: string): string {
+    const cleanIp = cameraIp?.trim();
+    if (!cleanIp) {
+        return '';
+    }
+
+    if (/^https?:\/\//i.test(cleanIp)) {
+        try {
+            const url = new URL(cleanIp);
+            return url.hostname;
+        } catch {
+            return cleanIp.replace(/^https?:\/\//i, '');
+        }
+    }
+
+    return cleanIp;
+}
+
 export function buildHubStreamUrl(
     cameraIp: string,
     cameraChannel: number,
     streamType: HubStreamType = 'main',
 ): string {
-    const cleanIp = cameraIp?.trim();
+    const cleanIp = normalizeHubHost(cameraIp);
     if (!cleanIp) {
         return '';
     }

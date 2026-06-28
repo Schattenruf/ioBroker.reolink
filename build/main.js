@@ -315,18 +315,10 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                     });
                     const motionDetected = (0, hub_helper_1.extractMotionState)(MdInfoValues.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
-                    await this.setState('sensor.motion', {
-                        val: motionDetected,
-                        ack: true,
-                    });
-                    await this.setState('sensor.motion_triggered', {
-                        val: motionDetected,
-                        ack: true,
-                    });
-                    await this.setState('status.motion', {
-                        val: motionDetected,
-                        ack: true,
-                    });
+                    this.log.debug(`Raw motion payload: ${JSON.stringify(MdInfoValues.data)}`);
+                    await this.setStateAsync('sensor.motion', motionDetected, true);
+                    await this.setStateAsync('sensor.motion_triggered', motionDetected, true);
+                    await this.setStateAsync('status.motion', motionDetected, true);
                 }
             }
             catch (error) {

@@ -13,9 +13,46 @@ function normalizeMotionValue(value) {
     }
     if (typeof value === 'string') {
         const normalized = value.trim().toLowerCase();
-        return ['1', 'true', 'on', 'active', 'triggered', 'alarm', 'motion'].includes(normalized);
+        return ['1', 'true', 'on', 'active', 'triggered', 'alarm', 'motion', 'detected'].includes(normalized);
     }
     return Boolean(value);
+}
+function findMotionValue(node) {
+    if (node === null || node === undefined) {
+        return undefined;
+    }
+    if (typeof node === 'boolean' || typeof node === 'number' || typeof node === 'string') {
+        return normalizeMotionValue(node);
+    }
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const result = findMotionValue(item);
+            if (result !== undefined) {
+                return result;
+            }
+        }
+        return undefined;
+    }
+    if (typeof node === 'object') {
+        const record = node;
+        const directKeys = ['state', 'motion', 'motionState', 'alarm_state', 'alarmState', 'triggered', 'status'];
+        for (const key of directKeys) {
+            const value = record[key];
+            if (value !== undefined) {
+                const result = findMotionValue(value);
+                if (result !== undefined) {
+                    return result;
+                }
+            }
+        }
+        for (const value of Object.values(record)) {
+            const result = findMotionValue(value);
+            if (result !== undefined) {
+                return result;
+            }
+        }
+    }
+    return undefined;
 }
 function extractMotionState(payload, cameraChannel) {
     const channel = Number(cameraChannel) || 0;
@@ -29,19 +66,16 @@ function extractMotionState(payload, cameraChannel) {
         .filter((entry) => Boolean(entry) && typeof entry === 'object')
         .map(entry => {
         const value = entry.value;
-        if (value && typeof value === 'object') {
-            const channelValue = value.channel ?? value.Channel;
-            const possibleState = value.state ?? value.motion;
-            return {
-                channel: Number(channelValue ?? channel),
-                state: normalizeMotionValue(possibleState),
-            };
-        }
-        const entryChannel = (entry.channel ?? entry.Channel);
-        const possibleState = (entry.state ?? entry.motion ?? entry.alarm_state);
+        const nestedChannel = value && typeof value === 'object'
+            ? value.channel ?? value.Channel
+            : undefined;
+        const entryChannel = (entry.channel ?? entry.Channel ?? nestedChannel);
+        const modeValue = (value && typeof value === 'object'
+            ? findMotionValue(value)
+            : undefined) ?? findMotionValue(entry);
         return {
             channel: Number(entryChannel ?? channel),
-            state: normalizeMotionValue(possibleState),
+            state: modeValue ?? false,
         };
     });
     const matchingChannel = candidates.find(candidate => candidate.channel === channel);
@@ -56,8 +90,24 @@ function getMotionPollingIntervalMs(useHub, _apiRefreshIntervalSeconds) {
     }
     return 5000;
 }
-function buildHubStreamUrl(cameraIp, cameraChannel, streamType = 'main') {
+function normalizeHubHost(cameraIp) {
     const cleanIp = cameraIp?.trim();
+    if (!cleanIp) {
+        return '';
+    }
+    if (/^https?:\/\//i.test(cleanIp)) {
+        try {
+            const url = new URL(cleanIp);
+            return url.hostname;
+        }
+        catch {
+            return cleanIp.replace(/^https?:\/\//i, '');
+        }
+    }
+    return cleanIp;
+}
+function buildHubStreamUrl(cameraIp, cameraChannel, streamType = 'main') {
+    const cleanIp = normalizeHubHost(cameraIp);
     if (!cleanIp) {
         return '';
     }

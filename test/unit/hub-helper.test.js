@@ -40,4 +40,8 @@ describe('Hub helper', () => {
         expect(extractMotionState({ value: { channel: 0, state: 1 } }, 0)).to.equal(true);
         expect(extractMotionState({ value: { channel: 0, state: 0 } }, 0)).to.equal(false);
     });
+
+    it('should use the user-provided host without a scheme for hub URLs', () => {
+        expect(buildHubStreamUrl('https://192.168.1.50', 2, 'main')).to.equal('rtsp://192.168.1.50:554/h264Preview_02_main');
+    });
 });
