@@ -1,7 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getMotionPollingIntervalMs = getMotionPollingIntervalMs;
 exports.buildHubStreamUrl = buildHubStreamUrl;
 exports.getHubStreamUrls = getHubStreamUrls;
+function getMotionPollingIntervalMs(useHub, _apiRefreshIntervalSeconds) {
+    if (!useHub) {
+        return 0;
+    }
+    return 5000;
+}
 function buildHubStreamUrl(cameraIp, cameraChannel, streamType = 'main') {
     const cleanIp = cameraIp?.trim();
     if (!cleanIp) {

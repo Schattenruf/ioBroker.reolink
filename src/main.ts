@@ -7,7 +7,7 @@ import { NeolinkManager, type NeolinkConfig } from './neolink-manager';
 import { checkAllDependencies } from './dependency-check';
 import { captureSnapshot } from './snapshot-helper';
 import { MqttHelper } from './mqtt-helper';
-import { getHubStreamUrls } from './hub-helper';
+import { getHubStreamUrls, getMotionPollingIntervalMs } from './hub-helper';
 import type {
     ReoLinkCamAdapterConfig,
     ReolinkCommand,
@@ -131,6 +131,7 @@ class ReoLinkCamAdapter extends Adapter {
     private mqttHelper: MqttHelper | null = null;
     private mqttBatteryQueryInterval: ioBroker.Interval | undefined = undefined;
     private mqttControlBusy = false;
+    private hubMotionPollInterval: ioBroker.Interval | undefined = undefined;
 
     constructor(options?: Partial<AdapterOptions>) {
         super({
@@ -237,6 +238,8 @@ class ReoLinkCamAdapter extends Adapter {
         }
 
         await this.getLocalLink();
+        await this.getMdState();
+        this.startHubMotionPolling();
         await this.refreshState('onReady');
         await this.getDriveInfo();
         await this.getPtzGuardInfo();
@@ -278,6 +281,31 @@ class ReoLinkCamAdapter extends Adapter {
     }
 
     // function for getting motion detection
+    private startHubMotionPolling(): void {
+        this.stopHubMotionPolling();
+
+        if (!this.config.useHub) {
+            return;
+        }
+
+        const intervalMs = getMotionPollingIntervalMs(this.config.useHub, Number(this.config.apiRefreshInterval) || 10);
+        if (intervalMs <= 0) {
+            return;
+        }
+
+        this.log.debug(`Starting Hub motion polling every ${intervalMs}ms`);
+        this.hubMotionPollInterval = this.setInterval(() => {
+            void this.getMdState();
+        }, intervalMs);
+    }
+
+    private stopHubMotionPolling(): void {
+        if (this.hubMotionPollInterval) {
+            this.clearInterval(this.hubMotionPollInterval);
+            this.hubMotionPollInterval = undefined;
+        }
+    }
+
     async getMdState(): Promise<void> {
         if (this.reolinkApiClient) {
             try {
@@ -1342,7 +1370,9 @@ class ReoLinkCamAdapter extends Adapter {
     async refreshState(source: string): Promise<void> {
         this.log.debug(`refreshState': started from "${source}"`);
 
-        await this.getMdState();
+        if (!this.config.useHub) {
+            await this.getMdState();
+        }
         await this.getAiState();
         await this.getAiCfg();
         await this.getMailNotification();
@@ -1504,6 +1534,7 @@ class ReoLinkCamAdapter extends Adapter {
             if (this.mqttBatteryQueryInterval) {
                 this.clearInterval(this.mqttBatteryQueryInterval);
             }
+            this.stopHubMotionPolling();
 
             // Stop MQTT client + neolink processes
             const promises: Promise<void>[] = [];

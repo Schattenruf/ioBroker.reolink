@@ -146,6 +146,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
     mqttHelper = null;
     mqttBatteryQueryInterval = undefined;
     mqttControlBusy = false;
+    hubMotionPollInterval = undefined;
     constructor(options) {
         super({
             ...options,
@@ -239,6 +240,8 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             return;
         }
         await this.getLocalLink();
+        await this.getMdState();
+        this.startHubMotionPolling();
         await this.refreshState('onReady');
         await this.getDriveInfo();
         await this.getPtzGuardInfo();
@@ -278,6 +281,26 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         this.subscribeStates('ai_config.*');
     }
     // function for getting motion detection
+    startHubMotionPolling() {
+        this.stopHubMotionPolling();
+        if (!this.config.useHub) {
+            return;
+        }
+        const intervalMs = (0, hub_helper_1.getMotionPollingIntervalMs)(this.config.useHub, Number(this.config.apiRefreshInterval) || 10);
+        if (intervalMs <= 0) {
+            return;
+        }
+        this.log.debug(`Starting Hub motion polling every ${intervalMs}ms`);
+        this.hubMotionPollInterval = this.setInterval(() => {
+            void this.getMdState();
+        }, intervalMs);
+    }
+    stopHubMotionPolling() {
+        if (this.hubMotionPollInterval) {
+            this.clearInterval(this.hubMotionPollInterval);
+            this.hubMotionPollInterval = undefined;
+        }
+    }
     async getMdState() {
         if (this.reolinkApiClient) {
             try {
@@ -1262,7 +1285,9 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
     }
     async refreshState(source) {
         this.log.debug(`refreshState': started from "${source}"`);
-        await this.getMdState();
+        if (!this.config.useHub) {
+            await this.getMdState();
+        }
         await this.getAiState();
         await this.getAiCfg();
         await this.getMailNotification();
@@ -1419,6 +1444,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             if (this.mqttBatteryQueryInterval) {
                 this.clearInterval(this.mqttBatteryQueryInterval);
             }
+            this.stopHubMotionPolling();
             // Stop MQTT client + neolink processes
             const promises = [];
             if (this.mqttHelper) {

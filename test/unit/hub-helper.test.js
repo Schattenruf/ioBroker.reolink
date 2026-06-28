@@ -1,5 +1,5 @@
 const { expect } = require('chai');
-const { buildHubStreamUrl, getHubStreamUrls } = require('../../build/hub-helper');
+const { buildHubStreamUrl, getHubStreamUrls, getMotionPollingIntervalMs } = require('../../build/hub-helper');
 
 describe('Hub helper', () => {
     it('should build a hub RTSP URL for the main stream', () => {
@@ -16,5 +16,10 @@ describe('Hub helper', () => {
         const urls = getHubStreamUrls('192.168.1.50', 1, 'rtsp://192.168.1.50:554/h264Preview_01_main');
         expect(urls.mainStream).to.equal('rtsp://192.168.1.50:554/h264Preview_01_main');
         expect(urls.subStream).to.equal('rtsp://192.168.1.50:554/h264Preview_01_sub');
+    });
+
+    it('should use a fast polling interval for hub motion updates', () => {
+        expect(getMotionPollingIntervalMs(true, 30)).to.equal(5000);
+        expect(getMotionPollingIntervalMs(false, 30)).to.equal(0);
     });
 });

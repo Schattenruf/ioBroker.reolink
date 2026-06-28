@@ -1,5 +1,13 @@
 export type HubStreamType = 'main' | 'sub';
 
+export function getMotionPollingIntervalMs(useHub: boolean, _apiRefreshIntervalSeconds?: number): number {
+    if (!useHub) {
+        return 0;
+    }
+
+    return 5000;
+}
+
 export function buildHubStreamUrl(
     cameraIp: string,
     cameraChannel: number,
