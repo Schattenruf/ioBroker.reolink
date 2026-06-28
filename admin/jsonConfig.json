@@ -94,6 +94,16 @@
                     "label": "Battery-powered camera (uses neolink)",
                     "help": "Enable for Argus 3 Pro, B400, D400, E1, and similar battery cameras"
                 },
+                "useHub": {
+                    "type": "checkbox",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4,
+                    "label": "Hub nutzen",
+                    "help": "Enable Hub/Hub Plus specific stream URLs and motion handling for cameras connected through the Reolink Hub"
+                },
                 "cameraUID": {
                     "hidden": "!data.isBatteryCam",
                     "type": "text",

@@ -7,6 +7,7 @@ import { NeolinkManager, type NeolinkConfig } from './neolink-manager';
 import { checkAllDependencies } from './dependency-check';
 import { captureSnapshot } from './snapshot-helper';
 import { MqttHelper } from './mqtt-helper';
+import { getHubStreamUrls } from './hub-helper';
 import type {
     ReoLinkCamAdapterConfig,
     ReolinkCommand,
@@ -186,6 +187,10 @@ class ReoLinkCamAdapter extends Adapter {
             return; // Don't continue with HTTP API
         }
 
+        if (this.config.useHub) {
+            this.log.info('Hub mode enabled - using Hub-specific stream URLs and motion handling');
+        }
+
         // HTTP API camera mode:
         // 1. Remove any leftover battery cam states (in case user switched camera type)
         // 2. Create HTTP cam states dynamically (analog to createBatteryCamStates for battery cams)
@@ -293,6 +298,10 @@ class ReoLinkCamAdapter extends Adapter {
 
                     this.log.debug(`Motion Detection value: ${MdValues.value.state}`);
                     await this.setState('sensor.motion', {
+                        val: !!MdValues.value.state,
+                        ack: true,
+                    });
+                    await this.setState('status.motion', {
                         val: !!MdValues.value.state,
                         ack: true,
                     });
@@ -636,6 +645,22 @@ class ReoLinkCamAdapter extends Adapter {
                         val: LinkValues.value.LocalLink.activeLink,
                         ack: true,
                     });
+
+                    if (this.config.useHub) {
+                        const streamUrls = getHubStreamUrls(
+                            this.config.cameraIp,
+                            this.config.cameraChannel,
+                            LinkValues.value.LocalLink.activeLink,
+                        );
+                        await this.setState('streams.mainStream', {
+                            val: streamUrls.mainStream,
+                            ack: true,
+                        });
+                        await this.setState('streams.subStream', {
+                            val: streamUrls.subStream,
+                            ack: true,
+                        });
+                    }
                     await this.setState('network.mac', {
                         val: LinkValues.value.LocalLink.mac,
                         ack: true,
@@ -2164,6 +2189,53 @@ class ReoLinkCamAdapter extends Adapter {
      */
     private async createHttpCamStates(): Promise<void> {
         this.log.debug('Creating HTTP camera states...');
+
+        // --- Streams ---
+        await this.setObjectNotExistsAsync('streams', {
+            type: 'channel',
+            common: { name: { en: 'streams', de: 'streams' } },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.mainStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'main stream', de: 'hauptstream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.subStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'sub stream', de: 'unterer stream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+
+        // --- Motion status ---
+        await this.setObjectNotExistsAsync('status', {
+            type: 'channel',
+            common: { name: { en: 'status', de: 'status' } },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('status.motion', {
+            type: 'state',
+            common: {
+                role: 'sensor.motion',
+                name: { en: 'motion detection', de: 'bewegungserkennung' },
+                type: 'boolean',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
 
         // --- AI Config ---
         await this.setObjectNotExistsAsync('ai_config', { type: 'channel', common: { name: 'AI Config' }, native: {} });

@@ -9,6 +9,7 @@ export type ReoLinkCamAdapterConfig = {
     sslvalid: boolean;
     UriEncodedPassword: boolean;
     isBatteryCam: boolean;
+    useHub: boolean;
     cameraUID: string;
     cameraBatteryName: string;
     streamAutoDisableSeconds: number;
