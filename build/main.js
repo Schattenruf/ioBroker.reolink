@@ -184,6 +184,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         await this.setState('info.connection', false, true);
         this.log.info('Reolink adapter has started');
         await this.ensureHubModeState();
+        await this.ensureMotionStates();
         if (!this.config.cameraIp) {
             this.log.error('Camera Ip not set - please check instance!');
             return;
@@ -2100,6 +2101,54 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             native: {},
         });
         await this.setStateAsync('info.hub_mode', !!this.config.useHub, true);
+    }
+    async ensureMotionStates() {
+        await this.setObjectNotExistsAsync('status', {
+            type: 'channel',
+            common: { name: { en: 'status', de: 'status' } },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('status.motion', {
+            type: 'state',
+            common: {
+                role: 'sensor.motion',
+                name: { en: 'motion detection', de: 'bewegungserkennung' },
+                type: 'boolean',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('sensor', {
+            type: 'channel',
+            common: { name: { en: 'sensor', de: 'sensor' } },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('sensor.motion', {
+            type: 'state',
+            common: {
+                role: 'sensor.motion',
+                name: { en: 'motion detection', de: 'Bewegungserkennung' },
+                type: 'boolean',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('sensor.motion_triggered', {
+            type: 'state',
+            common: {
+                role: 'sensor.motion',
+                name: { en: 'motion triggered', de: 'Bewegung ausgelöst' },
+                type: 'boolean',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setStateAsync('status.motion', false, true);
+        await this.setStateAsync('sensor.motion', false, true);
+        await this.setStateAsync('sensor.motion_triggered', false, true);
     }
     /**
      * Create state objects for HTTP API cameras (standard Reolink cameras).
