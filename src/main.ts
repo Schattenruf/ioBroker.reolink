@@ -151,7 +151,16 @@ class ReoLinkCamAdapter extends Adapter {
      * @param withChannel for multi devices
      */
     genUrl(command: ReolinkCommandName, genRndSeed?: boolean, withChannel?: boolean): string {
-        let urlString = `/api.cgi?cmd=${command}&`;
+        return this.genUrlWithPath(command, genRndSeed, withChannel, '/api.cgi');
+    }
+
+    private genUrlWithPath(
+        command: ReolinkCommandName,
+        genRndSeed?: boolean,
+        withChannel?: boolean,
+        path = '/api.cgi',
+    ): string {
+        let urlString = `${path}?cmd=${command}&`;
         let password = encodeURIComponent(this.config.cameraPassword);
         if (this.config.UriEncodedPassword !== undefined) {
             if (!this.config.UriEncodedPassword) {
@@ -307,24 +316,42 @@ class ReoLinkCamAdapter extends Adapter {
         }
     }
 
+    private async callMotionStateApi(): Promise<unknown> {
+        const candidatePaths = ['/api.cgi', '/cgi-bin/api.cgi'];
+        let lastError: unknown;
+
+        for (const path of candidatePaths) {
+            try {
+                const response = await this.reolinkApiClient!.get(this.genUrlWithPath('GetMdState', false, true, path));
+                if (response.status === 200) {
+                    return response;
+                }
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        throw lastError ?? new Error('Unable to query motion state');
+    }
+
     async getMdState(): Promise<void> {
         if (this.reolinkApiClient) {
             try {
-                // cmd, channel, user, password
-                const MdInfoValues = await this.reolinkApiClient.get(this.genUrl('GetMdState', false, true));
+                const MdInfoValues = await this.callMotionStateApi();
+                const response = MdInfoValues as { status?: number; data?: unknown };
 
                 this.log.debug(
-                    `camMdStateInfo ${JSON.stringify(MdInfoValues.status)}: ${JSON.stringify(MdInfoValues.data)}`,
+                    `camMdStateInfo ${JSON.stringify(response.status)}: ${JSON.stringify(response.data)}`,
                 );
 
-                if (MdInfoValues.status === 200) {
+                if (response.status === 200) {
                     this.apiConnected = true;
                     await this.setState('network.connected', {
                         val: this.apiConnected,
                         ack: true,
                     });
 
-                    const motionDetected = extractMotionState(MdInfoValues.data, this.config.cameraChannel);
+                    const motionDetected = extractMotionState(response.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
                     this.log.debug(`Raw motion payload: ${JSON.stringify(MdInfoValues.data)}`);
                     await this.setStateAsync('sensor.motion', motionDetected, true);
