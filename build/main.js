@@ -196,8 +196,8 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             this.log.error('Username and/or password not set properly - please check instance!');
             return;
         }
-        // Check if this is a battery-powered camera
-        if (this.config.isBatteryCam) {
+        // Check if this is a battery-powered camera. Hub instances should still use the HTTP API path.
+        if ((0, hub_helper_1.shouldUseBatteryCamPath)(this.config.isBatteryCam, this.config.useHub)) {
             this.log.info('Battery-powered camera detected - using neolink');
             await this.startBatteryCam();
             return; // Don't continue with HTTP API
@@ -241,7 +241,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             this.log.error(`${error}: ${error.code}`);
         }
         if (!this.apiConnected) {
-            return;
+            this.log.warn('Device info could not be verified, but continuing with local-link and motion queries');
         }
         await this.getLocalLink();
         await this.getMdState();

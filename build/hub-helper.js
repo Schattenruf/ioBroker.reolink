@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractMotionState = extractMotionState;
 exports.getMotionPollingIntervalMs = getMotionPollingIntervalMs;
+exports.shouldUseBatteryCamPath = shouldUseBatteryCamPath;
 exports.buildHubEventServiceUrl = buildHubEventServiceUrl;
 exports.buildHubStreamUrl = buildHubStreamUrl;
 exports.getHubStreamUrls = getHubStreamUrls;
@@ -90,6 +91,9 @@ function getMotionPollingIntervalMs(useHub, _apiRefreshIntervalSeconds) {
         return 0;
     }
     return 5000;
+}
+function shouldUseBatteryCamPath(isBatteryCam, useHub) {
+    return Boolean(isBatteryCam) && !Boolean(useHub);
 }
 function normalizeHubHost(cameraIp) {
     const cleanIp = cameraIp?.trim();

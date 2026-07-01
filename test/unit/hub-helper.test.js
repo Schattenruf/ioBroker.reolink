@@ -5,6 +5,7 @@ const {
     extractMotionState,
     getHubStreamUrls,
     getMotionPollingIntervalMs,
+    shouldUseBatteryCamPath,
 } = require('../../build/hub-helper');
 
 describe('Hub helper', () => {
@@ -46,8 +47,30 @@ describe('Hub helper', () => {
         expect(buildHubStreamUrl('https://192.168.1.50', 2, 'main')).to.equal('rtsp://192.168.1.50:554/h264Preview_02_main');
     });
 
+    it('should route hub instances through the HTTP camera path', () => {
+        expect(shouldUseBatteryCamPath(true, true)).to.equal(false);
+        expect(shouldUseBatteryCamPath(true, false)).to.equal(true);
+        expect(shouldUseBatteryCamPath(false, true)).to.equal(false);
+    });
+
     it('should build an ONVIF event service URL for hub motion subscriptions', () => {
         expect(buildHubEventServiceUrl('192.168.1.50')).to.equal('http://192.168.1.50:8000/onvif/event_service');
         expect(buildHubEventServiceUrl('https://192.168.1.50')).to.equal('http://192.168.1.50:8000/onvif/event_service');
+    });
+
+    it('should parse nested channel payloads for hub motion updates', () => {
+        const payload = {
+            data: [
+                {
+                    channel: 1,
+                    value: {
+                        state: 'triggered',
+                    },
+                },
+            ],
+        };
+
+        expect(extractMotionState(payload, 1)).to.equal(true);
+        expect(extractMotionState(payload, 2)).to.equal(false);
     });
 });

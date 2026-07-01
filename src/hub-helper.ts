@@ -69,14 +69,14 @@ export function extractMotionState(payload: unknown, cameraChannel?: number): bo
     const candidates = entries
         .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
         .map(entry => {
-            const value = entry.value;
+            const value = (entry.value ?? entry) as Record<string, unknown>;
             const nestedChannel = value && typeof value === 'object'
-                ? (value as Record<string, unknown>).channel ?? (value as Record<string, unknown>).Channel
+                ? (value.channel ?? value.Channel ?? value.ch ?? value.Ch)
                 : undefined;
-            const entryChannel = (entry.channel ?? entry.Channel ?? nestedChannel) as unknown;
-            const modeValue = (value && typeof value === 'object'
-                ? findMotionValue(value)
-                : undefined) ?? findMotionValue(entry);
+            const entryChannel = (entry.channel ?? entry.Channel ?? entry.ch ?? entry.Ch ?? nestedChannel) as unknown;
+            const directState = findMotionValue(value);
+            const entryState = findMotionValue(entry);
+            const modeValue = directState ?? entryState;
             return {
                 channel: Number(entryChannel ?? channel),
                 state: modeValue ?? false,
@@ -88,6 +88,11 @@ export function extractMotionState(payload: unknown, cameraChannel?: number): bo
         return matchingChannel.state;
     }
 
+    const fallbackByChannel = candidates.find(candidate => candidate.channel !== channel && candidate.channel >= 0);
+    if (fallbackByChannel) {
+        return fallbackByChannel.state;
+    }
+
     return candidates[0]?.state ?? false;
 }
 
@@ -97,6 +102,10 @@ export function getMotionPollingIntervalMs(useHub: boolean, _apiRefreshIntervalS
     }
 
     return 5000;
+}
+
+export function shouldUseBatteryCamPath(isBatteryCam?: boolean, useHub?: boolean): boolean {
+    return Boolean(isBatteryCam) && !Boolean(useHub);
 }
 
 function normalizeHubHost(cameraIp?: string): string {
