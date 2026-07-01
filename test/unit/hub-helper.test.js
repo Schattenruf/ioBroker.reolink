@@ -1,5 +1,6 @@
 const { expect } = require('chai');
 const {
+    aggregateMotionStates,
     buildHubEventServiceUrl,
     buildHubStreamUrl,
     extractMotionState,
@@ -56,6 +57,11 @@ describe('Hub helper', () => {
     it('should build an ONVIF event service URL for hub motion subscriptions', () => {
         expect(buildHubEventServiceUrl('192.168.1.50')).to.equal('http://192.168.1.50:8000/onvif/event_service');
         expect(buildHubEventServiceUrl('https://192.168.1.50')).to.equal('http://192.168.1.50:8000/onvif/event_service');
+    });
+
+    it('should aggregate child motion states into a parent motion state', () => {
+        expect(aggregateMotionStates([false, false, 'triggered'])).to.equal(true);
+        expect(aggregateMotionStates([false, false, 0])).to.equal(false);
     });
 
     it('should parse nested channel payloads for hub motion updates', () => {

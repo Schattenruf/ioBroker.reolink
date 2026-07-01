@@ -104,6 +104,10 @@ export function getMotionPollingIntervalMs(useHub: boolean, _apiRefreshIntervalS
     return 5000;
 }
 
+export function aggregateMotionStates(values: Array<unknown>): boolean {
+    return values.some(value => normalizeMotionValue(value));
+}
+
 export function shouldUseBatteryCamPath(isBatteryCam?: boolean, useHub?: boolean): boolean {
     return Boolean(isBatteryCam) && !Boolean(useHub);
 }

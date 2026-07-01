@@ -8,6 +8,7 @@ import { checkAllDependencies } from './dependency-check';
 import { captureSnapshot } from './snapshot-helper';
 import { MqttHelper } from './mqtt-helper';
 import {
+    aggregateMotionStates,
     buildHubEventServiceUrl,
     extractMotionState,
     getHubStreamUrls,
@@ -1665,6 +1666,21 @@ class ReoLinkCamAdapter extends Adapter {
 
                 if (id.endsWith('ai_config.raw')) {
                     await this.setAiCfg(state.val as string);
+                    return;
+                }
+
+                if (id.endsWith('sensor.people.state') || id.endsWith('sensor.people') || id.endsWith('people.motion')) {
+                    const childMotionState = Boolean(state.val);
+                    const parentStates = [
+                        await this.getStateAsync('status.motion'),
+                        await this.getStateAsync('sensor.motion'),
+                        await this.getStateAsync('sensor.motion_triggered'),
+                    ];
+                    const aggregated = aggregateMotionStates(parentStates.map(entry => entry?.val));
+                    const parentValue = aggregated || childMotionState;
+                    await this.setStateAsync('status.motion', { val: parentValue, ack: true });
+                    await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
+                    await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
                     return;
                 }
 
