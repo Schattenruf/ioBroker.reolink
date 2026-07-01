@@ -117,6 +117,15 @@ function normalizeHubHost(cameraIp?: string): string {
     return cleanIp;
 }
 
+export function buildHubEventServiceUrl(cameraIp: string): string {
+    const cleanIp = normalizeHubHost(cameraIp);
+    if (!cleanIp) {
+        return '';
+    }
+
+    return `http://${cleanIp}:8000/onvif/event_service`;
+}
+
 export function buildHubStreamUrl(
     cameraIp: string,
     cameraChannel: number,

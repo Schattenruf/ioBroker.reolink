@@ -7,7 +7,7 @@ import { NeolinkManager, type NeolinkConfig } from './neolink-manager';
 import { checkAllDependencies } from './dependency-check';
 import { captureSnapshot } from './snapshot-helper';
 import { MqttHelper } from './mqtt-helper';
-import { extractMotionState, getHubStreamUrls, getMotionPollingIntervalMs } from './hub-helper';
+import { buildHubEventServiceUrl, extractMotionState, getHubStreamUrls, getMotionPollingIntervalMs } from './hub-helper';
 import type {
     ReoLinkCamAdapterConfig,
     ReolinkCommand,
@@ -353,7 +353,7 @@ class ReoLinkCamAdapter extends Adapter {
 
                     const motionDetected = extractMotionState(response.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
-                    this.log.debug(`Raw motion payload: ${JSON.stringify(MdInfoValues.data)}`);
+                    this.log.debug(`Raw motion payload: ${JSON.stringify(response.data)}`);
                     await this.setStateAsync('sensor.motion', motionDetected, true);
                     await this.setStateAsync('sensor.motion_triggered', motionDetected, true);
                     await this.setStateAsync('status.motion', motionDetected, true);
@@ -712,6 +712,15 @@ class ReoLinkCamAdapter extends Adapter {
                         ack: true,
                     });
                     if (this.config.useHub) {
+                        const onvifEventUrl = buildHubEventServiceUrl(this.config.cameraIp);
+                        await this.setState('streams.hubEventServiceUrl', {
+                            val: onvifEventUrl,
+                            ack: true,
+                        });
+                        await this.setState('streams.activeStreamUrl', {
+                            val: streamUrls.mainStream,
+                            ack: true,
+                        });
                         await this.setState('streams.mainStream', {
                             val: streamUrls.mainStream,
                             ack: true,
@@ -2371,10 +2380,34 @@ class ReoLinkCamAdapter extends Adapter {
             },
             native: {},
         });
+        await this.setObjectNotExistsAsync('streams.hubEventServiceUrl', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'hub event service url', de: 'hub event service url' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.activeStreamUrl', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'active stream url', de: 'aktiver stream link' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
 
         const initialHubUrls = getHubStreamUrls(this.config.cameraIp, this.config.cameraChannel);
         await this.setStateAsync('streams.hubMainStream', initialHubUrls.mainStream, true);
         await this.setStateAsync('streams.hubSubStream', initialHubUrls.subStream, true);
+        await this.setStateAsync('streams.hubEventServiceUrl', buildHubEventServiceUrl(this.config.cameraIp), true);
+        await this.setStateAsync('streams.activeStreamUrl', initialHubUrls.mainStream, true);
 
         // --- Motion status ---
         await this.setObjectNotExistsAsync('status', {

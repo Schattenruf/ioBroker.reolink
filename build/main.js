@@ -163,7 +163,10 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
      * @param withChannel for multi devices
      */
     genUrl(command, genRndSeed, withChannel) {
-        let urlString = `/api.cgi?cmd=${command}&`;
+        return this.genUrlWithPath(command, genRndSeed, withChannel, '/api.cgi');
+    }
+    genUrlWithPath(command, genRndSeed, withChannel, path = '/api.cgi') {
+        let urlString = `${path}?cmd=${command}&`;
         let password = encodeURIComponent(this.config.cameraPassword);
         if (this.config.UriEncodedPassword !== undefined) {
             if (!this.config.UriEncodedPassword) {
@@ -302,21 +305,37 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             this.hubMotionPollInterval = undefined;
         }
     }
+    async callMotionStateApi() {
+        const candidatePaths = ['/api.cgi', '/cgi-bin/api.cgi'];
+        let lastError;
+        for (const path of candidatePaths) {
+            try {
+                const response = await this.reolinkApiClient.get(this.genUrlWithPath('GetMdState', false, true, path));
+                if (response.status === 200) {
+                    return response;
+                }
+            }
+            catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError ?? new Error('Unable to query motion state');
+    }
     async getMdState() {
         if (this.reolinkApiClient) {
             try {
-                // cmd, channel, user, password
-                const MdInfoValues = await this.reolinkApiClient.get(this.genUrl('GetMdState', false, true));
-                this.log.debug(`camMdStateInfo ${JSON.stringify(MdInfoValues.status)}: ${JSON.stringify(MdInfoValues.data)}`);
-                if (MdInfoValues.status === 200) {
+                const MdInfoValues = await this.callMotionStateApi();
+                const response = MdInfoValues;
+                this.log.debug(`camMdStateInfo ${JSON.stringify(response.status)}: ${JSON.stringify(response.data)}`);
+                if (response.status === 200) {
                     this.apiConnected = true;
                     await this.setState('network.connected', {
                         val: this.apiConnected,
                         ack: true,
                     });
-                    const motionDetected = (0, hub_helper_1.extractMotionState)(MdInfoValues.data, this.config.cameraChannel);
+                    const motionDetected = (0, hub_helper_1.extractMotionState)(response.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
-                    this.log.debug(`Raw motion payload: ${JSON.stringify(MdInfoValues.data)}`);
+                    this.log.debug(`Raw motion payload: ${JSON.stringify(response.data)}`);
                     await this.setStateAsync('sensor.motion', motionDetected, true);
                     await this.setStateAsync('sensor.motion_triggered', motionDetected, true);
                     await this.setStateAsync('status.motion', motionDetected, true);
@@ -655,6 +674,15 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                         ack: true,
                     });
                     if (this.config.useHub) {
+                        const onvifEventUrl = (0, hub_helper_1.buildHubEventServiceUrl)(this.config.cameraIp);
+                        await this.setState('streams.hubEventServiceUrl', {
+                            val: onvifEventUrl,
+                            ack: true,
+                        });
+                        await this.setState('streams.activeStreamUrl', {
+                            val: streamUrls.mainStream,
+                            ack: true,
+                        });
                         await this.setState('streams.mainStream', {
                             val: streamUrls.mainStream,
                             ack: true,
@@ -2208,9 +2236,33 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             },
             native: {},
         });
+        await this.setObjectNotExistsAsync('streams.hubEventServiceUrl', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'hub event service url', de: 'hub event service url' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.activeStreamUrl', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'active stream url', de: 'aktiver stream link' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
         const initialHubUrls = (0, hub_helper_1.getHubStreamUrls)(this.config.cameraIp, this.config.cameraChannel);
         await this.setStateAsync('streams.hubMainStream', initialHubUrls.mainStream, true);
         await this.setStateAsync('streams.hubSubStream', initialHubUrls.subStream, true);
+        await this.setStateAsync('streams.hubEventServiceUrl', (0, hub_helper_1.buildHubEventServiceUrl)(this.config.cameraIp), true);
+        await this.setStateAsync('streams.activeStreamUrl', initialHubUrls.mainStream, true);
         // --- Motion status ---
         await this.setObjectNotExistsAsync('status', {
             type: 'channel',

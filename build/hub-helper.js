@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractMotionState = extractMotionState;
 exports.getMotionPollingIntervalMs = getMotionPollingIntervalMs;
+exports.buildHubEventServiceUrl = buildHubEventServiceUrl;
 exports.buildHubStreamUrl = buildHubStreamUrl;
 exports.getHubStreamUrls = getHubStreamUrls;
 function normalizeMotionValue(value) {
@@ -105,6 +106,13 @@ function normalizeHubHost(cameraIp) {
         }
     }
     return cleanIp;
+}
+function buildHubEventServiceUrl(cameraIp) {
+    const cleanIp = normalizeHubHost(cameraIp);
+    if (!cleanIp) {
+        return '';
+    }
+    return `http://${cleanIp}:8000/onvif/event_service`;
 }
 function buildHubStreamUrl(cameraIp, cameraChannel, streamType = 'main') {
     const cleanIp = normalizeHubHost(cameraIp);

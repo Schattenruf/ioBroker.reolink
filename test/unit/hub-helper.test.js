@@ -1,5 +1,6 @@
 const { expect } = require('chai');
 const {
+    buildHubEventServiceUrl,
     buildHubStreamUrl,
     extractMotionState,
     getHubStreamUrls,
@@ -43,5 +44,10 @@ describe('Hub helper', () => {
 
     it('should use the user-provided host without a scheme for hub URLs', () => {
         expect(buildHubStreamUrl('https://192.168.1.50', 2, 'main')).to.equal('rtsp://192.168.1.50:554/h264Preview_02_main');
+    });
+
+    it('should build an ONVIF event service URL for hub motion subscriptions', () => {
+        expect(buildHubEventServiceUrl('192.168.1.50')).to.equal('http://192.168.1.50:8000/onvif/event_service');
+        expect(buildHubEventServiceUrl('https://192.168.1.50')).to.equal('http://192.168.1.50:8000/onvif/event_service');
     });
 });
