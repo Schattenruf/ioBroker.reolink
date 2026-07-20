@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractMotionState = extractMotionState;
 exports.getMotionPollingIntervalMs = getMotionPollingIntervalMs;
+exports.aggregateMotionStates = aggregateMotionStates;
 exports.shouldUseBatteryCamPath = shouldUseBatteryCamPath;
 exports.buildHubEventServiceUrl = buildHubEventServiceUrl;
 exports.buildHubStreamUrl = buildHubStreamUrl;
@@ -67,14 +68,14 @@ function extractMotionState(payload, cameraChannel) {
     const candidates = entries
         .filter((entry) => Boolean(entry) && typeof entry === 'object')
         .map(entry => {
-        const value = entry.value;
+        const value = (entry.value ?? entry);
         const nestedChannel = value && typeof value === 'object'
-            ? value.channel ?? value.Channel
+            ? (value.channel ?? value.Channel ?? value.ch ?? value.Ch)
             : undefined;
-        const entryChannel = (entry.channel ?? entry.Channel ?? nestedChannel);
-        const modeValue = (value && typeof value === 'object'
-            ? findMotionValue(value)
-            : undefined) ?? findMotionValue(entry);
+        const entryChannel = (entry.channel ?? entry.Channel ?? entry.ch ?? entry.Ch ?? nestedChannel);
+        const directState = findMotionValue(value);
+        const entryState = findMotionValue(entry);
+        const modeValue = directState ?? entryState;
         return {
             channel: Number(entryChannel ?? channel),
             state: modeValue ?? false,
@@ -84,6 +85,10 @@ function extractMotionState(payload, cameraChannel) {
     if (matchingChannel) {
         return matchingChannel.state;
     }
+    const fallbackByChannel = candidates.find(candidate => candidate.channel !== channel && candidate.channel >= 0);
+    if (fallbackByChannel) {
+        return fallbackByChannel.state;
+    }
     return candidates[0]?.state ?? false;
 }
 function getMotionPollingIntervalMs(useHub, _apiRefreshIntervalSeconds) {
@@ -91,6 +96,9 @@ function getMotionPollingIntervalMs(useHub, _apiRefreshIntervalSeconds) {
         return 0;
     }
     return 5000;
+}
+function aggregateMotionStates(values) {
+    return values.some(value => normalizeMotionValue(value));
 }
 function shouldUseBatteryCamPath(isBatteryCam, useHub) {
     return Boolean(isBatteryCam) && !Boolean(useHub);

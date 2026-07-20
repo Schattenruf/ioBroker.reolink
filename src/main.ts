@@ -458,6 +458,8 @@ class ReoLinkCamAdapter extends Adapter {
                         this.log.debug(`get ai state vehicle: ${error}`);
                         this.log.debug('vehicle state not found.');
                     }
+
+                    await this.syncMotionStatesFromAi();
                 }
             } catch (error) {
                 const errorMessage = error.message.toString();
@@ -473,6 +475,23 @@ class ReoLinkCamAdapter extends Adapter {
                 });
             }
         }
+    }
+
+    private async syncMotionStatesFromAi(): Promise<void> {
+        const currentStates = await Promise.all([
+            this.getStateAsync('status.motion'),
+            this.getStateAsync('sensor.motion'),
+            this.getStateAsync('sensor.motion_triggered'),
+            this.getStateAsync('sensor.dog_cat.state'),
+            this.getStateAsync('sensor.face.state'),
+            this.getStateAsync('sensor.people.state'),
+            this.getStateAsync('sensor.vehicle.state'),
+        ]);
+
+        const parentValue = aggregateMotionStates(currentStates.map(entry => entry?.val));
+        await this.setStateAsync('status.motion', { val: parentValue, ack: true });
+        await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
+        await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
     }
 
     async getAiCfg(): Promise<void> {
@@ -1669,18 +1688,15 @@ class ReoLinkCamAdapter extends Adapter {
                     return;
                 }
 
-                if (id.endsWith('sensor.people.state') || id.endsWith('sensor.people') || id.endsWith('people.motion')) {
-                    const childMotionState = Boolean(state.val);
-                    const parentStates = [
-                        await this.getStateAsync('status.motion'),
-                        await this.getStateAsync('sensor.motion'),
-                        await this.getStateAsync('sensor.motion_triggered'),
-                    ];
-                    const aggregated = aggregateMotionStates(parentStates.map(entry => entry?.val));
-                    const parentValue = aggregated || childMotionState;
-                    await this.setStateAsync('status.motion', { val: parentValue, ack: true });
-                    await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
-                    await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
+                if (
+                    id.endsWith('sensor.dog_cat.state') ||
+                    id.endsWith('sensor.face.state') ||
+                    id.endsWith('sensor.people.state') ||
+                    id.endsWith('sensor.vehicle.state') ||
+                    id.endsWith('sensor.people') ||
+                    id.endsWith('people.motion')
+                ) {
+                    await this.syncMotionStatesFromAi();
                     return;
                 }
 

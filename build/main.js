@@ -188,6 +188,8 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         this.log.info('Reolink adapter has started');
         await this.ensureHubModeState();
         await this.ensureMotionStates();
+        await this.ensureHubStreamStates();
+        await this.createHttpCamStates();
         if (!this.config.cameraIp) {
             this.log.error('Camera Ip not set - please check instance!');
             return;
@@ -207,7 +209,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         }
         // HTTP API camera mode:
         // 1. Remove any leftover battery cam states (in case user switched camera type)
-        // 2. Create HTTP cam states dynamically (analog to createBatteryCamStates for battery cams)
+        // 2. Ensure HTTP cam states exist dynamically (analog to createBatteryCamStates for battery cams)
         await this.cleanupBatteryCamStates();
         await this.createHttpCamStates();
         if (!this.config.cameraProtocol) {
@@ -327,7 +329,8 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                 const MdInfoValues = await this.callMotionStateApi();
                 const response = MdInfoValues;
                 this.log.debug(`camMdStateInfo ${JSON.stringify(response.status)}: ${JSON.stringify(response.data)}`);
-                if (response.status === 200) {
+                const hasPayload = response.data !== undefined && response.data !== null;
+                if (response.status === 200 || hasPayload) {
                     this.apiConnected = true;
                     await this.setState('network.connected', {
                         val: this.apiConnected,
@@ -336,9 +339,9 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                     const motionDetected = (0, hub_helper_1.extractMotionState)(response.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
                     this.log.debug(`Raw motion payload: ${JSON.stringify(response.data)}`);
-                    await this.setStateAsync('sensor.motion', motionDetected, true);
-                    await this.setStateAsync('sensor.motion_triggered', motionDetected, true);
-                    await this.setStateAsync('status.motion', motionDetected, true);
+                    await this.setStateAsync('sensor.motion', { val: motionDetected, ack: true });
+                    await this.setStateAsync('sensor.motion_triggered', { val: motionDetected, ack: true });
+                    await this.setStateAsync('status.motion', { val: motionDetected, ack: true });
                 }
             }
             catch (error) {
@@ -430,6 +433,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                         this.log.debug(`get ai state vehicle: ${error}`);
                         this.log.debug('vehicle state not found.');
                     }
+                    await this.syncMotionStatesFromAi();
                 }
             }
             catch (error) {
@@ -447,6 +451,21 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                 });
             }
         }
+    }
+    async syncMotionStatesFromAi() {
+        const currentStates = await Promise.all([
+            this.getStateAsync('status.motion'),
+            this.getStateAsync('sensor.motion'),
+            this.getStateAsync('sensor.motion_triggered'),
+            this.getStateAsync('sensor.dog_cat.state'),
+            this.getStateAsync('sensor.face.state'),
+            this.getStateAsync('sensor.people.state'),
+            this.getStateAsync('sensor.vehicle.state'),
+        ]);
+        const parentValue = (0, hub_helper_1.aggregateMotionStates)(currentStates.map(entry => entry?.val));
+        await this.setStateAsync('status.motion', { val: parentValue, ack: true });
+        await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
+        await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
     }
     async getAiCfg() {
         if (!this.reolinkApiClient) {
@@ -1555,6 +1574,15 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                     await this.setAiCfg(state.val);
                     return;
                 }
+                if (id.endsWith('sensor.dog_cat.state') ||
+                    id.endsWith('sensor.face.state') ||
+                    id.endsWith('sensor.people.state') ||
+                    id.endsWith('sensor.vehicle.state') ||
+                    id.endsWith('sensor.people') ||
+                    id.endsWith('people.motion')) {
+                    await this.syncMotionStatesFromAi();
+                    return;
+                }
                 if (propName == 'ir') {
                     await this.setIrLights(state.val);
                 }
@@ -2174,9 +2202,92 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             },
             native: {},
         });
-        await this.setStateAsync('status.motion', false, true);
-        await this.setStateAsync('sensor.motion', false, true);
-        await this.setStateAsync('sensor.motion_triggered', false, true);
+        await this.setStateAsync('status.motion', { val: false, ack: true });
+        await this.setStateAsync('sensor.motion', { val: false, ack: true });
+        await this.setStateAsync('sensor.motion_triggered', { val: false, ack: true });
+    }
+    async ensureHubStreamStates() {
+        await this.setObjectNotExistsAsync('streams', {
+            type: 'channel',
+            common: { name: { en: 'streams', de: 'streams' } },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.mainStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'main stream', de: 'hauptstream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.subStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'sub stream', de: 'unterer stream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.hubMainStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'hub main stream', de: 'hub hauptstream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.hubSubStream', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'hub sub stream', de: 'hub unterer stream' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.hubEventServiceUrl', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'hub event service url', de: 'hub event service url' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('streams.activeStreamUrl', {
+            type: 'state',
+            common: {
+                role: 'text.url',
+                name: { en: 'active stream url', de: 'aktiver stream link' },
+                type: 'string',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
+        const initialHubUrls = (0, hub_helper_1.getHubStreamUrls)(this.config.cameraIp, this.config.cameraChannel);
+        await this.setStateAsync('streams.hubMainStream', { val: initialHubUrls.mainStream, ack: true });
+        await this.setStateAsync('streams.hubSubStream', { val: initialHubUrls.subStream, ack: true });
+        await this.setStateAsync('streams.hubEventServiceUrl', {
+            val: (0, hub_helper_1.buildHubEventServiceUrl)(this.config.cameraIp),
+            ack: true,
+        });
+        await this.setStateAsync('streams.activeStreamUrl', { val: initialHubUrls.mainStream, ack: true });
+        await this.setStateAsync('streams.mainStream', { val: initialHubUrls.mainStream, ack: true });
+        await this.setStateAsync('streams.subStream', { val: initialHubUrls.subStream, ack: true });
     }
     /**
      * Create state objects for HTTP API cameras (standard Reolink cameras).
