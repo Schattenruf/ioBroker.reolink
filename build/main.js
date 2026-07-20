@@ -2818,11 +2818,12 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         });
         // --- Command ---
         await this.setObjectNotExistsAsync('command', {
+        this.log.debug('ensureMotionStates: creating/ensuring status and sensor motion states');
             type: 'channel',
             common: { name: { en: 'command', de: 'befehl' } },
             native: {},
         });
-        await this.setObjectNotExistsAsync('command.reboot', {
+        this.log.debug('ensureMotionStates: ensuring status.motion state object');
             type: 'state',
             common: {
                 role: 'button',
@@ -2833,10 +2834,12 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             },
             native: {},
         });
+        this.log.debug('ensureMotionStates: status.motion ensured');
         // --- RAW ---
         await this.setObjectNotExistsAsync('RAW', {
             type: 'channel',
             common: { name: { en: 'RAW', de: 'RAW' } },
+        this.log.debug('ensureMotionStates: initialized status.motion state to false');
             native: {},
         });
         await this.setObjectNotExistsAsync('RAW.Email', {
