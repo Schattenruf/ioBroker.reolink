@@ -188,17 +188,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         this.log.info('Reolink adapter has started');
         await this.ensureHubModeState();
         await this.ensureMotionStates();
-        // Remove legacy `status.motion` object if present to avoid duplicate motion states
-        try {
-            const legacy = await this.getObjectAsync('status.motion');
-            if (legacy) {
-                await this.delObjectAsync('status.motion');
-                this.log.debug('Removed legacy state: status.motion');
-            }
-        }
-        catch (err) {
-            // ignore
-        }
+        // legacy status.motion removal intentionally omitted to preserve compatibility
         if (!this.config.cameraIp) {
             this.log.error('Camera Ip not set - please check instance!');
             return;
