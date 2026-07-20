@@ -87,13 +87,8 @@ export function extractMotionState(payload: unknown, cameraChannel?: number): bo
     if (matchingChannel) {
         return matchingChannel.state;
     }
-
-    const fallbackByChannel = candidates.find(candidate => candidate.channel !== channel && candidate.channel >= 0);
-    if (fallbackByChannel) {
-        return fallbackByChannel.state;
-    }
-
-    return candidates[0]?.state ?? false;
+    // No exact match => no reliable motion for requested channel
+    return false;
 }
 
 export function getMotionPollingIntervalMs(useHub: boolean, _apiRefreshIntervalSeconds?: number): number {
