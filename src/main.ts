@@ -459,7 +459,12 @@ class ReoLinkCamAdapter extends Adapter {
                         this.log.debug('vehicle state not found.');
                     }
 
-                    await this.syncMotionStatesFromAi();
+                    await this.syncMotionStatesFromAi({
+                        dogCat: !!AiValues.value.dog_cat?.alarm_state,
+                        face: !!AiValues.value.face?.alarm_state,
+                        people: !!AiValues.value.people?.alarm_state,
+                        vehicle: !!AiValues.value.vehicle?.alarm_state,
+                    });
                 }
             } catch (error) {
                 const errorMessage = error.message.toString();
@@ -477,18 +482,22 @@ class ReoLinkCamAdapter extends Adapter {
         }
     }
 
-    private async syncMotionStatesFromAi(): Promise<void> {
-        const currentStates = await Promise.all([
-            this.getStateAsync('status.motion'),
-            this.getStateAsync('sensor.motion'),
-            this.getStateAsync('sensor.motion_triggered'),
-            this.getStateAsync('sensor.dog_cat.state'),
-            this.getStateAsync('sensor.face.state'),
-            this.getStateAsync('sensor.people.state'),
-            this.getStateAsync('sensor.vehicle.state'),
-        ]);
+    private async syncMotionStatesFromAi(states?: {
+        dogCat?: unknown;
+        face?: unknown;
+        people?: unknown;
+        vehicle?: unknown;
+    }): Promise<void> {
+        const currentStates = states
+            ? [states.dogCat, states.face, states.people, states.vehicle]
+            : await Promise.all([
+                  this.getStateAsync('sensor.dog_cat.state'),
+                  this.getStateAsync('sensor.face.state'),
+                  this.getStateAsync('sensor.people.state'),
+                  this.getStateAsync('sensor.vehicle.state'),
+              ]);
 
-        const parentValue = aggregateMotionStates(currentStates.map(entry => entry?.val));
+        const parentValue = aggregateMotionStates(currentStates.map(entry => (entry as ioBroker.State | undefined)?.val ?? entry));
         await this.setStateAsync('status.motion', { val: parentValue, ack: true });
         await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
         await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
@@ -1696,7 +1705,18 @@ class ReoLinkCamAdapter extends Adapter {
                     id.endsWith('sensor.people') ||
                     id.endsWith('people.motion')
                 ) {
-                    await this.syncMotionStatesFromAi();
+                    const currentAiStates = await Promise.all([
+                        id.endsWith('sensor.dog_cat.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.dog_cat.state'),
+                        id.endsWith('sensor.face.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.face.state'),
+                        id.endsWith('sensor.people.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.people.state'),
+                        id.endsWith('sensor.vehicle.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.vehicle.state'),
+                    ]);
+                    await this.syncMotionStatesFromAi({
+                        dogCat: currentAiStates[0] instanceof Object && 'val' in currentAiStates[0] ? (currentAiStates[0] as ioBroker.State).val : currentAiStates[0],
+                        face: currentAiStates[1] instanceof Object && 'val' in currentAiStates[1] ? (currentAiStates[1] as ioBroker.State).val : currentAiStates[1],
+                        people: currentAiStates[2] instanceof Object && 'val' in currentAiStates[2] ? (currentAiStates[2] as ioBroker.State).val : currentAiStates[2],
+                        vehicle: currentAiStates[3] instanceof Object && 'val' in currentAiStates[3] ? (currentAiStates[3] as ioBroker.State).val : currentAiStates[3],
+                    });
                     return;
                 }
 
