@@ -2332,7 +2332,6 @@ class ReoLinkCamAdapter extends Adapter {
             'streams.enable',
             'mqtt',
             'mqtt.enable',
-            'status',
             'status.battery_level',
             'snapshotImage',
             'snapshotStatus',
