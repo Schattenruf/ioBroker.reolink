@@ -188,6 +188,9 @@
     "mqttPort": 1883,
     "mqttUsername": "",
     "mqttPassword": ""
+    ,
+    "autoSnapshotOnMotion": false,
+    "snapshotCooldownSeconds": 10
   },
   "objects": [],
   "instanceObjects": [

@@ -19,6 +19,8 @@ export type ReoLinkCamAdapterConfig = {
     mqttPort?: number;
     mqttUsername?: string;
     mqttPassword?: string;
+    autoSnapshotOnMotion?: boolean;
+    snapshotCooldownSeconds?: number;
 };
 
 export type ReolinkCommandName =

@@ -139,6 +139,7 @@ class ReoLinkCamAdapter extends Adapter {
     private mqttBatteryQueryInterval: ioBroker.Interval | undefined = undefined;
     private mqttControlBusy = false;
     private hubMotionPollInterval: ioBroker.Interval | undefined = undefined;
+    private lastSnapshotAt: Map<number, number> = new Map();
 
     constructor(options?: Partial<AdapterOptions>) {
         super({
@@ -366,11 +367,10 @@ class ReoLinkCamAdapter extends Adapter {
                     this.log.debug(`Raw motion payload: ${JSON.stringify(response.data)}`);
                     await this.setStateAsync('sensor.motion', { val: motionDetected, ack: true });
                     await this.setStateAsync('sensor.motion_triggered', { val: motionDetected, ack: true });
-                    await this.setStateAsync('status.motion', { val: motionDetected, ack: true });
 
                     // If Hub mode and motion detected, capture a snapshot from the hub stream for the channel
                     try {
-                        if (this.config.useHub && motionDetected) {
+                        if (this.config.useHub && this.config.autoSnapshotOnMotion && motionDetected) {
                             await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
                         }
                     } catch (err) {
@@ -424,11 +424,10 @@ class ReoLinkCamAdapter extends Adapter {
                         this.log.debug(`dog_cat_state detection:${AiValues.value.dog_cat.alarm_state}`);
 
                         if (dogCatState) {
-                            await this.setStateAsync('status.motion', { val: true, ack: true });
                             await this.setStateAsync('sensor.motion', { val: true, ack: true });
                             await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
                             try {
-                                if (this.config.useHub) {
+                                if (this.config.useHub && this.config.autoSnapshotOnMotion) {
                                     await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
                                 }
                             } catch (err) {
@@ -452,11 +451,10 @@ class ReoLinkCamAdapter extends Adapter {
                         this.log.debug(`face_state detection:${AiValues.value.face.alarm_state}`);
 
                         if (faceState) {
-                            await this.setStateAsync('status.motion', { val: true, ack: true });
                             await this.setStateAsync('sensor.motion', { val: true, ack: true });
                             await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
                             try {
-                                if (this.config.useHub) {
+                                if (this.config.useHub && this.config.autoSnapshotOnMotion) {
                                     await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
                                 }
                             } catch (err) {
@@ -481,11 +479,10 @@ class ReoLinkCamAdapter extends Adapter {
 
                         // propagate to parent motion states and optionally capture snapshot
                         if (peopleState) {
-                            await this.setStateAsync('status.motion', { val: true, ack: true });
                             await this.setStateAsync('sensor.motion', { val: true, ack: true });
                             await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
                             try {
-                                if (this.config.useHub) {
+                                if (this.config.useHub && this.config.autoSnapshotOnMotion) {
                                     await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
                                 }
                             } catch (err) {
@@ -513,11 +510,10 @@ class ReoLinkCamAdapter extends Adapter {
                         try {
                             const vehicleState = !!AiValues.value.vehicle.alarm_state;
                             if (vehicleState) {
-                                await this.setStateAsync('status.motion', { val: true, ack: true });
                                 await this.setStateAsync('sensor.motion', { val: true, ack: true });
                                 await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
                                 try {
-                                    if (this.config.useHub) {
+                                    if (this.config.useHub && this.config.autoSnapshotOnMotion) {
                                         await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
                                     }
                                 } catch (err) {
@@ -1741,13 +1737,11 @@ class ReoLinkCamAdapter extends Adapter {
                 if (id.endsWith('sensor.people.state') || id.endsWith('sensor.people') || id.endsWith('people.motion')) {
                     const childMotionState = Boolean(state.val);
                     const parentStates = [
-                        await this.getStateAsync('status.motion'),
                         await this.getStateAsync('sensor.motion'),
                         await this.getStateAsync('sensor.motion_triggered'),
                     ];
                     const aggregated = aggregateMotionStates(parentStates.map(entry => entry?.val));
                     const parentValue = aggregated || childMotionState;
-                    await this.setStateAsync('status.motion', { val: parentValue, ack: true });
                     await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
                     await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
                     return;
@@ -2071,20 +2065,6 @@ class ReoLinkCamAdapter extends Adapter {
             native: {},
         });
 
-        await this.setObjectNotExistsAsync('status.motion', {
-            type: 'state',
-            common: {
-                name: 'Motion Detection',
-                type: 'boolean',
-                role: 'sensor.motion',
-                read: true,
-                write: false,
-                desc: 'Motion detection from camera (requires mqtt.enable = true)',
-            },
-            native: {},
-        });
-        await this.setStateAsync('status.motion', false, true);
-
         await this.setObjectNotExistsAsync('status.battery_level', {
             type: 'state',
             common: {
@@ -2102,7 +2082,7 @@ class ReoLinkCamAdapter extends Adapter {
         });
 
         // Initialize status states with default values
-        await this.setStateAsync('status.motion', false, true);
+        await this.setStateAsync('sensor.motion', false, true);
 
         // Snapshot (requires ffmpeg)
         await this.setObjectNotExistsAsync('snapshot', {
@@ -2149,6 +2129,37 @@ class ReoLinkCamAdapter extends Adapter {
             native: {},
         });
         await this.setStateAsync('snapshotStatus', 'idle', true);
+
+        // Snapshot settings visible in object tree (battery cam)
+        await this.setObjectNotExistsAsync('settings.autoSnapshotOnMotion', {
+            type: 'state',
+            common: {
+                role: 'switch',
+                name: { en: 'Auto snapshot on motion', de: 'Automatischer Snapshot bei Bewegung' },
+                type: 'boolean',
+                read: true,
+                write: true,
+                def: !!this.config.autoSnapshotOnMotion,
+                desc: 'If enabled, adapter will automatically capture a snapshot on Hub-detected motion (uses ffmpeg).',
+            },
+            native: {},
+        });
+        await this.setStateAsync('settings.autoSnapshotOnMotion', !!this.config.autoSnapshotOnMotion, true);
+
+        await this.setObjectNotExistsAsync('settings.snapshotCooldownSeconds', {
+            type: 'state',
+            common: {
+                role: 'value',
+                name: { en: 'Snapshot cooldown seconds', de: 'Snapshot Cooldown (Sekunden)' },
+                type: 'number',
+                read: true,
+                write: true,
+                def: Number(this.config.snapshotCooldownSeconds ?? 10),
+                desc: 'Minimum seconds between automatic snapshots for the same channel.',
+            },
+            native: {},
+        });
+        await this.setStateAsync('settings.snapshotCooldownSeconds', Number(this.config.snapshotCooldownSeconds ?? 10), true);
 
         // PIR control (requires MQTT)
         await this.setObjectNotExistsAsync('pir', {
@@ -2318,6 +2329,8 @@ class ReoLinkCamAdapter extends Adapter {
             'status.battery_level',
             'snapshotImage',
             'snapshotStatus',
+            'settings.autoSnapshotOnMotion',
+            'settings.snapshotCooldownSeconds',
             'floodlight',
             'pir',
             'ptz',
@@ -2367,22 +2380,8 @@ class ReoLinkCamAdapter extends Adapter {
     }
 
     private async ensureMotionStates(): Promise<void> {
-        await this.setObjectNotExistsAsync('status', {
-            type: 'channel',
-            common: { name: { en: 'status', de: 'status' } },
-            native: {},
-        });
-        await this.setObjectNotExistsAsync('status.motion', {
-            type: 'state',
-            common: {
-                role: 'sensor.motion',
-                name: { en: 'motion detection', de: 'bewegungserkennung' },
-                type: 'boolean',
-                read: true,
-                write: false,
-            },
-            native: {},
-        });
+        // 'status.motion' is intentionally created only for battery camera MQTT path
+        // to avoid duplicate 'motion' objects in the UI for HTTP/Hub cameras.
         await this.setObjectNotExistsAsync('sensor', {
             type: 'channel',
             common: { name: { en: 'sensor', de: 'sensor' } },
@@ -2410,7 +2409,6 @@ class ReoLinkCamAdapter extends Adapter {
             },
             native: {},
         });
-        await this.setStateAsync('status.motion', { val: false, ack: true });
         await this.setStateAsync('sensor.motion', { val: false, ack: true });
         await this.setStateAsync('sensor.motion_triggered', { val: false, ack: true });
     }
@@ -2594,17 +2592,7 @@ class ReoLinkCamAdapter extends Adapter {
             common: { name: { en: 'status', de: 'status' } },
             native: {},
         });
-        await this.setObjectNotExistsAsync('status.motion', {
-            type: 'state',
-            common: {
-                role: 'sensor.motion',
-                name: { en: 'motion detection', de: 'bewegungserkennung' },
-                type: 'boolean',
-                read: true,
-                write: false,
-            },
-            native: {},
-        });
+        // 'status.motion' intentionally omitted for HTTP/Hub mode to avoid duplicate Motion states
 
         // --- AI Config ---
         await this.setObjectNotExistsAsync('ai_config', { type: 'channel', common: { name: 'AI Config' }, native: {} });
@@ -3182,6 +3170,37 @@ class ReoLinkCamAdapter extends Adapter {
             native: {},
         });
 
+        // Snapshot settings visible in object tree
+        await this.setObjectNotExistsAsync('settings.autoSnapshotOnMotion', {
+            type: 'state',
+            common: {
+                role: 'switch',
+                name: { en: 'Auto snapshot on motion', de: 'Automatischer Snapshot bei Bewegung' },
+                type: 'boolean',
+                read: true,
+                write: true,
+                def: !!this.config.autoSnapshotOnMotion,
+                desc: 'If enabled, adapter will automatically capture a snapshot on Hub-detected motion (uses ffmpeg).',
+            },
+            native: {},
+        });
+        await this.setStateAsync('settings.autoSnapshotOnMotion', !!this.config.autoSnapshotOnMotion, true);
+
+        await this.setObjectNotExistsAsync('settings.snapshotCooldownSeconds', {
+            type: 'state',
+            common: {
+                role: 'value',
+                name: { en: 'Snapshot cooldown seconds', de: 'Snapshot Cooldown (Sekunden)' },
+                type: 'number',
+                read: true,
+                write: true,
+                def: Number(this.config.snapshotCooldownSeconds ?? 10),
+                desc: 'Minimum seconds between automatic snapshots for the same channel.',
+            },
+            native: {},
+        });
+        await this.setStateAsync('settings.snapshotCooldownSeconds', Number(this.config.snapshotCooldownSeconds ?? 10), true);
+
         // --- Command ---
         await this.setObjectNotExistsAsync('command', {
             type: 'channel',
@@ -3288,6 +3307,8 @@ class ReoLinkCamAdapter extends Adapter {
             'settings.ptzEnableGuard',
             'settings.ptzCheck',
             'settings.ptzGuardTimeout',
+            'settings.autoSnapshotOnMotion',
+            'settings.snapshotCooldownSeconds',
             'settings',
             'command.reboot',
             'command',
@@ -3466,7 +3487,7 @@ class ReoLinkCamAdapter extends Adapter {
                     await this.mqttHelper.subscribe(`neolink/${cameraName}/status/#`);
 
                     // Re-initialize states
-                    await this.setStateAsync('status.motion', false, true);
+                    await this.setStateAsync('sensor.motion', false, true);
 
                     // Send initial battery query via CLI (not MQTT - subprocess doesn't respond to MQTT queries)
                     void this.queryBatteryStatus();
@@ -3604,8 +3625,17 @@ class ReoLinkCamAdapter extends Adapter {
             await this.setStateAsync('snapshotStatus', 'error', true);
             return;
         }
+        const now = Date.now();
+        const cooldownSec = Number(this.config.snapshotCooldownSeconds ?? 10);
+        const cooldownMs = cooldownSec * 1000;
+        const last = this.lastSnapshotAt.get(channel) ?? 0;
+        if (now - last < cooldownMs) {
+            this.log.debug(`Skipping snapshot for channel ${channel}: cooldown ${cooldownSec}s not elapsed`);
+            return;
+        }
 
         try {
+            this.lastSnapshotAt.set(channel, now);
             await this.setStateAsync('snapshotStatus', 'capturing', true);
 
             const { mainStream } = getHubStreamUrls(this.config.cameraIp, channel);
@@ -3728,18 +3758,15 @@ class ReoLinkCamAdapter extends Adapter {
     private async handleMotionMessage(payload: string): Promise<void> {
         if (payload === 'triggered' || payload === 'on') {
             this.log.info('Motion detected!');
-            await this.setStateAsync('status.motion', true, true);
-            await this.setStateAsync('sensor.motion', true, true);
-            await this.setStateAsync('sensor.motion_triggered', true, true);
+                    await this.setStateAsync('sensor.motion', true, true);
+                    await this.setStateAsync('sensor.motion_triggered', true, true);
 
             // Clear motion after 5 seconds
-            this.setTimeout(async () => {
-                await this.setStateAsync('status.motion', false, true);
+                this.setTimeout(async () => {
                 await this.setStateAsync('sensor.motion', false, true);
                 await this.setStateAsync('sensor.motion_triggered', false, true);
             }, 5000);
         } else if (payload === 'clear' || payload === 'off') {
-            await this.setStateAsync('status.motion', false, true);
             await this.setStateAsync('sensor.motion', false, true);
             await this.setStateAsync('sensor.motion_triggered', false, true);
         }
