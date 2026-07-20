@@ -188,6 +188,17 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
         this.log.info('Reolink adapter has started');
         await this.ensureHubModeState();
         await this.ensureMotionStates();
+        // Remove legacy `status.motion` object if present to avoid duplicate motion states
+        try {
+            const legacy = await this.getObjectAsync('status.motion');
+            if (legacy) {
+                await this.delObjectAsync('status.motion');
+                this.log.debug('Removed legacy state: status.motion');
+            }
+        }
+        catch (err) {
+            // ignore
+        }
         if (!this.config.cameraIp) {
             this.log.error('Camera Ip not set - please check instance!');
             return;
@@ -338,7 +349,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                     this.log.debug(`Raw motion payload: ${JSON.stringify(response.data)}`);
                     await this.setStateAsync('sensor.motion', motionDetected, true);
                     await this.setStateAsync('sensor.motion_triggered', motionDetected, true);
-                    await this.setStateAsync('status.motion', motionDetected, true);
+                    // legacy `status.motion` removed; sensor.motion is authoritative
                 }
             }
             catch (error) {
@@ -1857,19 +1868,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             },
             native: {},
         });
-        await this.setObjectNotExistsAsync('status.motion', {
-            type: 'state',
-            common: {
-                name: 'Motion Detection',
-                type: 'boolean',
-                role: 'sensor.motion',
-                read: true,
-                write: false,
-                desc: 'Motion detection from camera (requires mqtt.enable = true)',
-            },
-            native: {},
-        });
-        await this.setStateAsync('status.motion', false, true);
+        // legacy `status.motion` intentionally omitted for battery MQTT path
         await this.setObjectNotExistsAsync('status.battery_level', {
             type: 'state',
             common: {
@@ -1886,7 +1885,6 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             native: {},
         });
         // Initialize status states with default values
-        await this.setStateAsync('status.motion', false, true);
         // Snapshot (requires ffmpeg)
         await this.setObjectNotExistsAsync('snapshot', {
             type: 'state',
@@ -2081,7 +2079,6 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             'mqtt',
             'mqtt.enable',
             'status',
-            'status.motion',
             'status.battery_level',
             'snapshotImage',
             'snapshotStatus',
@@ -2136,17 +2133,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             common: { name: { en: 'status', de: 'status' } },
             native: {},
         });
-        await this.setObjectNotExistsAsync('status.motion', {
-            type: 'state',
-            common: {
-                role: 'sensor.motion',
-                name: { en: 'motion detection', de: 'bewegungserkennung' },
-                type: 'boolean',
-                read: true,
-                write: false,
-            },
-            native: {},
-        });
+        // legacy `status.motion` intentionally omitted here
         await this.setObjectNotExistsAsync('sensor', {
             type: 'channel',
             common: { name: { en: 'sensor', de: 'sensor' } },
@@ -2174,7 +2161,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             },
             native: {},
         });
-        await this.setStateAsync('status.motion', false, true);
+        // legacy `status.motion` removed; no initialization
         await this.setStateAsync('sensor.motion', false, true);
         await this.setStateAsync('sensor.motion_triggered', false, true);
     }
@@ -2269,17 +2256,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             common: { name: { en: 'status', de: 'status' } },
             native: {},
         });
-        await this.setObjectNotExistsAsync('status.motion', {
-            type: 'state',
-            common: {
-                role: 'sensor.motion',
-                name: { en: 'motion detection', de: 'bewegungserkennung' },
-                type: 'boolean',
-                read: true,
-                write: false,
-            },
-            native: {},
-        });
+        // legacy `status.motion` intentionally omitted here
         // --- AI Config ---
         await this.setObjectNotExistsAsync('ai_config', { type: 'channel', common: { name: 'AI Config' }, native: {} });
         await this.setObjectNotExistsAsync('ai_config.raw', {
@@ -3106,8 +3083,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                     // Subscribe to all status topics with wildcard
                     const cameraName = this.neolinkConfig.name;
                     await this.mqttHelper.subscribe(`neolink/${cameraName}/status/#`);
-                    // Re-initialize states
-                    await this.setStateAsync('status.motion', false, true);
+                    // Re-initialize states (legacy status.motion removed)
                     // Send initial battery query via CLI (not MQTT - subprocess doesn't respond to MQTT queries)
                     void this.queryBatteryStatus();
                     // Query initial PIR status via CLI (more reliable than MQTT query)
@@ -3310,18 +3286,15 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
     async handleMotionMessage(payload) {
         if (payload === 'triggered' || payload === 'on') {
             this.log.info('Motion detected!');
-            await this.setStateAsync('status.motion', true, true);
             await this.setStateAsync('sensor.motion', true, true);
             await this.setStateAsync('sensor.motion_triggered', true, true);
             // Clear motion after 5 seconds
             this.setTimeout(async () => {
-                await this.setStateAsync('status.motion', false, true);
                 await this.setStateAsync('sensor.motion', false, true);
                 await this.setStateAsync('sensor.motion_triggered', false, true);
             }, 5000);
         }
         else if (payload === 'clear' || payload === 'off') {
-            await this.setStateAsync('status.motion', false, true);
             await this.setStateAsync('sensor.motion', false, true);
             await this.setStateAsync('sensor.motion_triggered', false, true);
         }
