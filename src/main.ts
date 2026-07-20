@@ -2616,7 +2616,20 @@ class ReoLinkCamAdapter extends Adapter {
             common: { name: { en: 'status', de: 'status' } },
             native: {},
         });
-        // 'status.motion' intentionally omitted for HTTP/Hub mode to avoid duplicate Motion states
+        // Ensure legacy `status.motion` also exists for HTTP/Hub mode so it's visible in ioBroker
+        await this.setObjectNotExistsAsync('status.motion', {
+            type: 'state',
+            common: {
+                role: 'sensor.motion',
+                name: { en: 'motion detection', de: 'bewegungserkennung' },
+                type: 'boolean',
+                read: true,
+                write: false,
+                desc: 'Motion detection (legacy status.motion) - visible for compatibility',
+            },
+            native: {},
+        });
+        await this.setStateAsync('status.motion', false, true);
 
         // --- AI Config ---
         await this.setObjectNotExistsAsync('ai_config', { type: 'channel', common: { name: 'AI Config' }, native: {} });
