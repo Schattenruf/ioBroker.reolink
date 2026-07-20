@@ -367,6 +367,15 @@ class ReoLinkCamAdapter extends Adapter {
                     await this.setStateAsync('sensor.motion', { val: motionDetected, ack: true });
                     await this.setStateAsync('sensor.motion_triggered', { val: motionDetected, ack: true });
                     await this.setStateAsync('status.motion', { val: motionDetected, ack: true });
+
+                    // If Hub mode and motion detected, capture a snapshot from the hub stream for the channel
+                    try {
+                        if (this.config.useHub && motionDetected) {
+                            await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
+                        }
+                    } catch (err) {
+                        this.log.debug(`captureHubSnapshotForChannel failed: ${err instanceof Error ? err.message : err}`);
+                    }
                 }
             } catch (error) {
                 const errorMessage = error.message.toString();
@@ -403,8 +412,9 @@ class ReoLinkCamAdapter extends Adapter {
 
                     const AiValues = AiInfoValues.data[0];
                     try {
+                        const dogCatState = !!AiValues.value.dog_cat.alarm_state;
                         await this.setState('sensor.dog_cat.state', {
-                            val: !!AiValues.value.dog_cat.alarm_state,
+                            val: dogCatState,
                             ack: true,
                         });
                         await this.setState('sensor.dog_cat.support', {
@@ -412,13 +422,27 @@ class ReoLinkCamAdapter extends Adapter {
                             ack: true,
                         });
                         this.log.debug(`dog_cat_state detection:${AiValues.value.dog_cat.alarm_state}`);
+
+                        if (dogCatState) {
+                            await this.setStateAsync('status.motion', { val: true, ack: true });
+                            await this.setStateAsync('sensor.motion', { val: true, ack: true });
+                            await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
+                            try {
+                                if (this.config.useHub) {
+                                    await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
+                                }
+                            } catch (err) {
+                                this.log.debug(`captureHubSnapshotForChannel failed (AI dog_cat): ${err instanceof Error ? err.message : err}`);
+                            }
+                        }
                     } catch (error) {
                         this.log.debug(`get ai state animal: ${error}`);
                         this.log.debug('dog cat state not found.');
                     }
                     try {
+                        const faceState = !!AiValues.value.face.alarm_state;
                         await this.setState('sensor.face.state', {
-                            val: !!AiValues.value.face.alarm_state,
+                            val: faceState,
                             ack: true,
                         });
                         await this.setState('sensor.face.support', {
@@ -426,13 +450,27 @@ class ReoLinkCamAdapter extends Adapter {
                             ack: true,
                         });
                         this.log.debug(`face_state detection:${AiValues.value.face.alarm_state}`);
+
+                        if (faceState) {
+                            await this.setStateAsync('status.motion', { val: true, ack: true });
+                            await this.setStateAsync('sensor.motion', { val: true, ack: true });
+                            await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
+                            try {
+                                if (this.config.useHub) {
+                                    await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
+                                }
+                            } catch (err) {
+                                this.log.debug(`captureHubSnapshotForChannel failed (AI face): ${err instanceof Error ? err.message : err}`);
+                            }
+                        }
                     } catch (error) {
                         this.log.debug(`get ai state face: ${error}`);
                         this.log.debug('face state not found.');
                     }
                     try {
+                        const peopleState = !!AiValues.value.people.alarm_state;
                         await this.setState('sensor.people.state', {
-                            val: !!AiValues.value.people.alarm_state,
+                            val: peopleState,
                             ack: true,
                         });
                         await this.setState('sensor.people.support', {
@@ -440,6 +478,20 @@ class ReoLinkCamAdapter extends Adapter {
                             ack: true,
                         });
                         this.log.debug(`people_state detection:${AiValues.value.people.alarm_state}`);
+
+                        // propagate to parent motion states and optionally capture snapshot
+                        if (peopleState) {
+                            await this.setStateAsync('status.motion', { val: true, ack: true });
+                            await this.setStateAsync('sensor.motion', { val: true, ack: true });
+                            await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
+                            try {
+                                if (this.config.useHub) {
+                                    await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
+                                }
+                            } catch (err) {
+                                this.log.debug(`captureHubSnapshotForChannel failed (AI people): ${err instanceof Error ? err.message : err}`);
+                            }
+                        }
                     } catch (error) {
                         this.log.debug(`get ai state people: ${error}`);
                         this.log.debug('people state not found.');
@@ -458,6 +510,23 @@ class ReoLinkCamAdapter extends Adapter {
                         this.log.debug(`get ai state vehicle: ${error}`);
                         this.log.debug('vehicle state not found.');
                     }
+                        try {
+                            const vehicleState = !!AiValues.value.vehicle.alarm_state;
+                            if (vehicleState) {
+                                await this.setStateAsync('status.motion', { val: true, ack: true });
+                                await this.setStateAsync('sensor.motion', { val: true, ack: true });
+                                await this.setStateAsync('sensor.motion_triggered', { val: true, ack: true });
+                                try {
+                                    if (this.config.useHub) {
+                                        await this.captureHubSnapshotForChannel(Number(this.config.cameraChannel));
+                                    }
+                                } catch (err) {
+                                    this.log.debug(`captureHubSnapshotForChannel failed (AI vehicle): ${err instanceof Error ? err.message : err}`);
+                                }
+                            }
+                        } catch (error) {
+                            // ignore
+                        }
                 }
             } catch (error) {
                 const errorMessage = error.message.toString();
@@ -3523,6 +3592,35 @@ class ReoLinkCamAdapter extends Adapter {
                     // Ignore cleanup errors
                 }
             }
+        }
+    }
+
+    /**
+     * Capture a snapshot from the Hub RTSP stream for a specific channel
+     */
+    private async captureHubSnapshotForChannel(channel: number): Promise<void> {
+        if (!this.ffmpegAvailable) {
+            this.log.error('Snapshot failed: ffmpeg not available');
+            await this.setStateAsync('snapshotStatus', 'error', true);
+            return;
+        }
+
+        try {
+            await this.setStateAsync('snapshotStatus', 'capturing', true);
+
+            const { mainStream } = getHubStreamUrls(this.config.cameraIp, channel);
+            const rtspUrl = mainStream;
+            this.log.debug(`Capturing snapshot from Hub RTSP URL: ${rtspUrl}`);
+
+            const imageBuffer = await captureSnapshot({ rtspUrl, timeoutMs: 15000 });
+            const base64Image = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+
+            await this.setStateAsync('snapshotImage', base64Image, true);
+            await this.setStateAsync('snapshotStatus', 'success', true);
+            this.log.info(`Hub snapshot captured successfully (${imageBuffer.length} bytes)`);
+        } catch (error) {
+            this.log.error(`Hub snapshot failed: ${error instanceof Error ? error.message : error}`);
+            await this.setStateAsync('snapshotStatus', 'error', true);
         }
     }
 
