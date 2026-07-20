@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.aggregateMotionStates = aggregateMotionStates;
 exports.extractMotionState = extractMotionState;
 exports.getMotionPollingIntervalMs = getMotionPollingIntervalMs;
 exports.shouldUseBatteryCamPath = shouldUseBatteryCamPath;
@@ -84,7 +85,13 @@ function extractMotionState(payload, cameraChannel) {
     if (matchingChannel) {
         return matchingChannel.state;
     }
-    return candidates[0]?.state ?? false;
+
+    // No exact match => no reliable motion for requested channel
+    return false;
+}
+
+function aggregateMotionStates(values) {
+    return values.some(value => normalizeMotionValue(value));
 }
 function getMotionPollingIntervalMs(useHub, _apiRefreshIntervalSeconds) {
     if (!useHub) {

@@ -2311,6 +2311,12 @@ class ReoLinkCamAdapter extends Adapter {
         await this.setStateAsync('query.battery', false, true);
 
         this.log.debug('Battery camera states created');
+
+        // Subscribe to AI child states so manual changes propagate to parent motion
+        this.subscribeStates('sensor.people.state');
+        this.subscribeStates('sensor.face.state');
+        this.subscribeStates('sensor.dog_cat.state');
+        this.subscribeStates('sensor.vehicle.state');
     }
 
     /**
@@ -2381,8 +2387,23 @@ class ReoLinkCamAdapter extends Adapter {
     }
 
     private async ensureMotionStates(): Promise<void> {
-        // 'status.motion' is intentionally created only for battery camera MQTT path
-        // to avoid duplicate 'motion' objects in the UI for HTTP/Hub cameras.
+        // Ensure legacy status channel + motion state exist (preserve original behavior)
+        await this.setObjectNotExistsAsync('status', {
+            type: 'channel',
+            common: { name: { en: 'status', de: 'status' } },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('status.motion', {
+            type: 'state',
+            common: {
+                role: 'sensor.motion',
+                name: { en: 'motion detection', de: 'bewegungserkennung' },
+                type: 'boolean',
+                read: true,
+                write: false,
+            },
+            native: {},
+        });
         await this.setObjectNotExistsAsync('sensor', {
             type: 'channel',
             common: { name: { en: 'sensor', de: 'sensor' } },
@@ -2412,6 +2433,8 @@ class ReoLinkCamAdapter extends Adapter {
         });
         await this.setStateAsync('sensor.motion', { val: false, ack: true });
         await this.setStateAsync('sensor.motion_triggered', { val: false, ack: true });
+        // initialize legacy status motion if not set
+        await this.setStateAsync('status.motion', { val: false, ack: true });
     }
 
     private async ensureHubStreamStates(): Promise<void> {
@@ -3239,6 +3262,12 @@ class ReoLinkCamAdapter extends Adapter {
         });
 
         this.log.debug('HTTP camera states created');
+
+        // Subscribe to AI child states so manual changes propagate to parent motion
+        this.subscribeStates('sensor.people.state');
+        this.subscribeStates('sensor.face.state');
+        this.subscribeStates('sensor.dog_cat.state');
+        this.subscribeStates('sensor.vehicle.state');
     }
 
     /**
