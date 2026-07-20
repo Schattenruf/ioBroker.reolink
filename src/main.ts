@@ -2387,11 +2387,13 @@ class ReoLinkCamAdapter extends Adapter {
 
     private async ensureMotionStates(): Promise<void> {
         // Ensure legacy status channel + motion state exist (preserve original behavior)
+        this.log.debug('ensureMotionStates: creating/ensuring status and sensor motion states');
         await this.setObjectNotExistsAsync('status', {
             type: 'channel',
             common: { name: { en: 'status', de: 'status' } },
             native: {},
         });
+        this.log.debug('ensureMotionStates: ensuring status.motion state object');
         await this.setObjectNotExistsAsync('status.motion', {
             type: 'state',
             common: {
@@ -2403,6 +2405,7 @@ class ReoLinkCamAdapter extends Adapter {
             },
             native: {},
         });
+        this.log.debug('ensureMotionStates: status.motion ensured');
         await this.setObjectNotExistsAsync('sensor', {
             type: 'channel',
             common: { name: { en: 'sensor', de: 'sensor' } },
@@ -2434,6 +2437,7 @@ class ReoLinkCamAdapter extends Adapter {
         await this.setStateAsync('sensor.motion_triggered', { val: false, ack: true });
         // initialize legacy status motion if not set
         await this.setStateAsync('status.motion', { val: false, ack: true });
+        this.log.debug('ensureMotionStates: initialized status.motion state to false');
     }
 
     private async ensureHubStreamStates(): Promise<void> {
