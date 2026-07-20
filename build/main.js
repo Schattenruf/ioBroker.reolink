@@ -339,9 +339,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                     const motionDetected = (0, hub_helper_1.extractMotionState)(response.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
                     this.log.debug(`Raw motion payload: ${JSON.stringify(response.data)}`);
-                    await this.setStateAsync('sensor.motion', { val: motionDetected, ack: true });
-                    await this.setStateAsync('sensor.motion_triggered', { val: motionDetected, ack: true });
-                    await this.setStateAsync('status.motion', { val: motionDetected, ack: true });
+                    await this.syncMotionStatesFromAi(motionDetected);
                 }
             }
             catch (error) {
@@ -433,12 +431,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                         this.log.debug(`get ai state vehicle: ${error}`);
                         this.log.debug('vehicle state not found.');
                     }
-                    await this.syncMotionStatesFromAi({
-                        dogCat: !!AiValues.value.dog_cat?.alarm_state,
-                        face: !!AiValues.value.face?.alarm_state,
-                        people: !!AiValues.value.people?.alarm_state,
-                        vehicle: !!AiValues.value.vehicle?.alarm_state,
-                    });
+                    await this.syncMotionStatesFromAi(!!AiValues.value.people?.alarm_state);
                 }
             }
             catch (error) {
@@ -457,16 +450,15 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
             }
         }
     }
-    async syncMotionStatesFromAi(states) {
-        const currentStates = states
-            ? [states.dogCat, states.face, states.people, states.vehicle]
-            : await Promise.all([
-                this.getStateAsync('sensor.dog_cat.state'),
-                this.getStateAsync('sensor.face.state'),
-                this.getStateAsync('sensor.people.state'),
-                this.getStateAsync('sensor.vehicle.state'),
-            ]);
-        const parentValue = (0, hub_helper_1.aggregateMotionStates)(currentStates.map(entry => entry?.val ?? entry));
+    async syncMotionStatesFromAi(motionDetected) {
+        const currentStates = await Promise.all([
+            this.getStateAsync('sensor.dog_cat.state'),
+            this.getStateAsync('sensor.face.state'),
+            this.getStateAsync('sensor.people.state'),
+            this.getStateAsync('sensor.vehicle.state'),
+        ]);
+        const aiDetected = (0, hub_helper_1.aggregateMotionStates)(currentStates.map(entry => entry?.val));
+        const parentValue = Boolean(motionDetected) || aiDetected;
         await this.setStateAsync('status.motion', { val: parentValue, ack: true });
         await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
         await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
@@ -1584,18 +1576,7 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
                     id.endsWith('sensor.vehicle.state') ||
                     id.endsWith('sensor.people') ||
                     id.endsWith('people.motion')) {
-                    const currentAiStates = await Promise.all([
-                        id.endsWith('sensor.dog_cat.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.dog_cat.state'),
-                        id.endsWith('sensor.face.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.face.state'),
-                        id.endsWith('sensor.people.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.people.state'),
-                        id.endsWith('sensor.vehicle.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.vehicle.state'),
-                    ]);
-                    await this.syncMotionStatesFromAi({
-                        dogCat: currentAiStates[0] instanceof Object && 'val' in currentAiStates[0] ? currentAiStates[0].val : currentAiStates[0],
-                        face: currentAiStates[1] instanceof Object && 'val' in currentAiStates[1] ? currentAiStates[1].val : currentAiStates[1],
-                        people: currentAiStates[2] instanceof Object && 'val' in currentAiStates[2] ? currentAiStates[2].val : currentAiStates[2],
-                        vehicle: currentAiStates[3] instanceof Object && 'val' in currentAiStates[3] ? currentAiStates[3].val : currentAiStates[3],
-                    });
+                    await this.syncMotionStatesFromAi(Boolean(state.val));
                     return;
                 }
                 if (propName == 'ir') {
@@ -3436,20 +3417,14 @@ class ReoLinkCamAdapter extends adapter_core_1.Adapter {
     async handleMotionMessage(payload) {
         if (payload === 'triggered' || payload === 'on') {
             this.log.info('Motion detected!');
-            await this.setStateAsync('status.motion', true, true);
-            await this.setStateAsync('sensor.motion', true, true);
-            await this.setStateAsync('sensor.motion_triggered', true, true);
+            await this.syncMotionStatesFromAi(true);
             // Clear motion after 5 seconds
             this.setTimeout(async () => {
-                await this.setStateAsync('status.motion', false, true);
-                await this.setStateAsync('sensor.motion', false, true);
-                await this.setStateAsync('sensor.motion_triggered', false, true);
+                await this.syncMotionStatesFromAi(false);
             }, 5000);
         }
         else if (payload === 'clear' || payload === 'off') {
-            await this.setStateAsync('status.motion', false, true);
-            await this.setStateAsync('sensor.motion', false, true);
-            await this.setStateAsync('sensor.motion_triggered', false, true);
+            await this.syncMotionStatesFromAi(false);
         }
     }
     /**

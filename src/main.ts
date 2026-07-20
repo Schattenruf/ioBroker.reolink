@@ -364,9 +364,7 @@ class ReoLinkCamAdapter extends Adapter {
                     const motionDetected = extractMotionState(response.data, this.config.cameraChannel);
                     this.log.debug(`Motion Detection value: ${motionDetected}`);
                     this.log.debug(`Raw motion payload: ${JSON.stringify(response.data)}`);
-                    await this.setStateAsync('sensor.motion', { val: motionDetected, ack: true });
-                    await this.setStateAsync('sensor.motion_triggered', { val: motionDetected, ack: true });
-                    await this.setStateAsync('status.motion', { val: motionDetected, ack: true });
+                    await this.syncMotionStatesFromAi(motionDetected);
                 }
             } catch (error) {
                 const errorMessage = error.message.toString();
@@ -459,12 +457,7 @@ class ReoLinkCamAdapter extends Adapter {
                         this.log.debug('vehicle state not found.');
                     }
 
-                    await this.syncMotionStatesFromAi({
-                        dogCat: !!AiValues.value.dog_cat?.alarm_state,
-                        face: !!AiValues.value.face?.alarm_state,
-                        people: !!AiValues.value.people?.alarm_state,
-                        vehicle: !!AiValues.value.vehicle?.alarm_state,
-                    });
+                    await this.syncMotionStatesFromAi(!!AiValues.value.people?.alarm_state);
                 }
             } catch (error) {
                 const errorMessage = error.message.toString();
@@ -482,22 +475,16 @@ class ReoLinkCamAdapter extends Adapter {
         }
     }
 
-    private async syncMotionStatesFromAi(states?: {
-        dogCat?: unknown;
-        face?: unknown;
-        people?: unknown;
-        vehicle?: unknown;
-    }): Promise<void> {
-        const currentStates = states
-            ? [states.dogCat, states.face, states.people, states.vehicle]
-            : await Promise.all([
-                  this.getStateAsync('sensor.dog_cat.state'),
-                  this.getStateAsync('sensor.face.state'),
-                  this.getStateAsync('sensor.people.state'),
-                  this.getStateAsync('sensor.vehicle.state'),
-              ]);
+    private async syncMotionStatesFromAi(motionDetected?: boolean): Promise<void> {
+        const currentStates = await Promise.all([
+            this.getStateAsync('sensor.dog_cat.state'),
+            this.getStateAsync('sensor.face.state'),
+            this.getStateAsync('sensor.people.state'),
+            this.getStateAsync('sensor.vehicle.state'),
+        ]);
 
-        const parentValue = aggregateMotionStates(currentStates.map(entry => (entry as ioBroker.State | undefined)?.val ?? entry));
+        const aiDetected = aggregateMotionStates(currentStates.map(entry => entry?.val));
+        const parentValue = Boolean(motionDetected) || aiDetected;
         await this.setStateAsync('status.motion', { val: parentValue, ack: true });
         await this.setStateAsync('sensor.motion', { val: parentValue, ack: true });
         await this.setStateAsync('sensor.motion_triggered', { val: parentValue, ack: true });
@@ -1705,18 +1692,7 @@ class ReoLinkCamAdapter extends Adapter {
                     id.endsWith('sensor.people') ||
                     id.endsWith('people.motion')
                 ) {
-                    const currentAiStates = await Promise.all([
-                        id.endsWith('sensor.dog_cat.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.dog_cat.state'),
-                        id.endsWith('sensor.face.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.face.state'),
-                        id.endsWith('sensor.people.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.people.state'),
-                        id.endsWith('sensor.vehicle.state') ? Promise.resolve(state.val) : this.getStateAsync('sensor.vehicle.state'),
-                    ]);
-                    await this.syncMotionStatesFromAi({
-                        dogCat: currentAiStates[0] instanceof Object && 'val' in currentAiStates[0] ? (currentAiStates[0] as ioBroker.State).val : currentAiStates[0],
-                        face: currentAiStates[1] instanceof Object && 'val' in currentAiStates[1] ? (currentAiStates[1] as ioBroker.State).val : currentAiStates[1],
-                        people: currentAiStates[2] instanceof Object && 'val' in currentAiStates[2] ? (currentAiStates[2] as ioBroker.State).val : currentAiStates[2],
-                        vehicle: currentAiStates[3] instanceof Object && 'val' in currentAiStates[3] ? (currentAiStates[3] as ioBroker.State).val : currentAiStates[3],
-                    });
+                    await this.syncMotionStatesFromAi(Boolean(state.val));
                     return;
                 }
 
@@ -3666,20 +3642,14 @@ class ReoLinkCamAdapter extends Adapter {
     private async handleMotionMessage(payload: string): Promise<void> {
         if (payload === 'triggered' || payload === 'on') {
             this.log.info('Motion detected!');
-            await this.setStateAsync('status.motion', true, true);
-            await this.setStateAsync('sensor.motion', true, true);
-            await this.setStateAsync('sensor.motion_triggered', true, true);
+            await this.syncMotionStatesFromAi(true);
 
             // Clear motion after 5 seconds
             this.setTimeout(async () => {
-                await this.setStateAsync('status.motion', false, true);
-                await this.setStateAsync('sensor.motion', false, true);
-                await this.setStateAsync('sensor.motion_triggered', false, true);
+                await this.syncMotionStatesFromAi(false);
             }, 5000);
         } else if (payload === 'clear' || payload === 'off') {
-            await this.setStateAsync('status.motion', false, true);
-            await this.setStateAsync('sensor.motion', false, true);
-            await this.setStateAsync('sensor.motion_triggered', false, true);
+            await this.syncMotionStatesFromAi(false);
         }
     }
 
